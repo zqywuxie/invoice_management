@@ -1,0 +1,707 @@
+/**
+ * User Portal Styles
+ * Requirements: 6.1, 6.4
+ * Clean, minimal design focused on the upload workflow
+ */
+
+:root {
+    --primary-color: #0d6efd;
+    --primary-light: #e7f1ff;
+    --primary-dark: #0b5ed7;
+    --success-color: #198754;
+    --success-light: #d1e7dd;
+    --danger-color: #dc3545;
+    --danger-light: #f8d7da;
+    --warning-color: #ffc107;
+    --warning-light: #fff3cd;
+    --text-muted: #6c757d;
+    --text-dark: #212529;
+    --bg-light: #f8f9fa;
+    --bg-white: #ffffff;
+    --border-color: #dee2e6;
+    --border-light: #e9ecef;
+    --shadow-sm: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+    --shadow-md: 0 0.5rem 1rem rgba(0, 0, 0, 0.1);
+    --shadow-lg: 0 1rem 3rem rgba(0, 0, 0, 0.15);
+    --transition-fast: 0.15s ease;
+    --transition-normal: 0.3s ease;
+}
+
+/* Base Styles */
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    color: var(--text-dark);
+    line-height: 1.6;
+}
+
+/* Login Page */
+.login-container {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #f5f7fa 0%, #e4e8ec 100%);
+}
+
+.login-card {
+    background: white;
+    padding: 2.5rem;
+    border-radius: 12px;
+    box-shadow: var(--shadow-lg);
+    width: 100%;
+    max-width: 400px;
+}
+
+.login-card .form-control {
+    padding: 0.75rem 1rem;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.login-card .form-control:focus {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.15);
+}
+
+.login-card .btn-primary {
+    padding: 0.75rem 1rem;
+    border-radius: 8px;
+    font-weight: 500;
+    transition: background-color var(--transition-fast), transform var(--transition-fast);
+}
+
+.login-card .btn-primary:hover {
+    background-color: var(--primary-dark);
+    transform: translateY(-1px);
+}
+
+.login-card .login-logo {
+    font-size: 3rem;
+    color: var(--primary-color);
+    margin-bottom: 1rem;
+}
+
+/* Navigation */
+.navbar {
+    padding: 0.75rem 0;
+}
+
+.navbar-brand {
+    font-size: 1.1rem;
+}
+
+.nav-link {
+    padding: 0.5rem 1rem !important;
+    margin: 0 0.25rem;
+    transition: all var(--transition-fast);
+}
+
+.nav-link.active {
+    color: var(--primary-color) !important;
+    background-color: var(--primary-light);
+    border-radius: 6px;
+}
+
+.nav-link:hover:not(.active) {
+    background-color: var(--bg-light);
+    border-radius: 6px;
+}
+
+/* Cards */
+.card {
+    border: none;
+    border-radius: 12px;
+    box-shadow: var(--shadow-sm);
+    transition: box-shadow var(--transition-normal);
+}
+
+.card:hover {
+    box-shadow: var(--shadow-md);
+}
+
+.card-header {
+    border-bottom: 1px solid var(--border-light);
+    padding: 1rem 1.25rem;
+}
+
+.card-body {
+    padding: 1.25rem;
+}
+
+/* Drop Zone - PDF Upload */
+.drop-zone {
+    border: 2px dashed var(--border-color);
+    border-radius: 12px;
+    padding: 4rem 2rem;
+    text-align: center;
+    cursor: pointer;
+    transition: all var(--transition-normal);
+    background-color: var(--bg-light);
+    position: relative;
+    overflow: hidden;
+}
+
+.drop-zone::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(135deg, transparent 0%, rgba(13, 110, 253, 0.03) 100%);
+    opacity: 0;
+    transition: opacity var(--transition-normal);
+}
+
+.drop-zone:hover,
+.drop-zone.dragover {
+    border-color: var(--primary-color);
+    background-color: var(--primary-light);
+    transform: scale(1.01);
+}
+
+.drop-zone:hover::before,
+.drop-zone.dragover::before {
+    opacity: 1;
+}
+
+.drop-zone i {
+    transition: transform var(--transition-normal);
+}
+
+.drop-zone:hover i,
+.drop-zone.dragover i {
+    transform: scale(1.1);
+}
+
+.drop-zone h5 {
+    margin-top: 0.5rem;
+    font-weight: 600;
+}
+
+.drop-zone p {
+    font-size: 0.9rem;
+}
+
+
+/* Invoice Preview Card */
+#invoice-preview {
+    animation: slideIn 0.3s ease;
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+#invoice-preview .form-label {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 0.25rem;
+}
+
+#invoice-preview .fw-bold {
+    font-size: 1rem;
+}
+
+/* Reimbursement Person Selector */
+#person-select {
+    border-radius: 8px 0 0 8px;
+}
+
+#add-person-btn {
+    border-radius: 0 8px 8px 0;
+}
+
+/* Voucher Upload Area */
+.voucher-upload-area {
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 1rem;
+    background-color: var(--bg-light);
+    transition: border-color var(--transition-fast);
+}
+
+.voucher-upload-area:hover {
+    border-color: var(--primary-color);
+}
+
+.voucher-drop-zone {
+    border: 2px dashed var(--border-color);
+    border-radius: 6px;
+    padding: 1rem;
+    text-align: center;
+    cursor: pointer;
+    transition: all var(--transition-normal);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    min-height: 60px;
+}
+
+.voucher-drop-zone:hover,
+.voucher-drop-zone.dragover {
+    border-color: var(--primary-color);
+    background-color: white;
+}
+
+.voucher-drop-zone i {
+    font-size: 1.25rem;
+}
+
+/* Voucher Thumbnails - Upload Preview */
+.voucher-thumbnails {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin-top: 0.75rem;
+}
+
+.voucher-thumbnail {
+    position: relative;
+    width: 80px;
+    height: 80px;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: var(--shadow-sm);
+    border: 2px solid var(--border-light);
+    transition: all var(--transition-fast);
+}
+
+.voucher-thumbnail:hover {
+    border-color: var(--primary-color);
+    transform: scale(1.05);
+}
+
+.voucher-thumbnail img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.voucher-thumbnail .remove-btn {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    background: rgba(220, 53, 69, 0.9);
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 22px;
+    height: 22px;
+    font-size: 14px;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity var(--transition-fast);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.voucher-thumbnail:hover .remove-btn {
+    opacity: 1;
+}
+
+.voucher-thumbnail .remove-btn:hover {
+    background: var(--danger-color);
+    transform: scale(1.1);
+}
+
+/* Invoice Table */
+.table {
+    margin-bottom: 0;
+}
+
+.table thead th {
+    font-weight: 600;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-bottom: 2px solid var(--border-color);
+    padding: 1rem 0.75rem;
+    white-space: nowrap;
+}
+
+.table tbody td {
+    padding: 1rem 0.75rem;
+    vertical-align: middle;
+    border-bottom: 1px solid var(--border-light);
+}
+
+.table tbody tr {
+    cursor: pointer;
+    transition: background-color var(--transition-fast);
+}
+
+.table-hover tbody tr:hover {
+    background-color: var(--primary-light);
+}
+
+.table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+/* Invoice Amount Styling */
+.table .text-success {
+    font-weight: 600;
+}
+
+/* Voucher Badge in Table */
+.badge {
+    font-weight: 500;
+    padding: 0.35em 0.65em;
+}
+
+/* Voucher Gallery - Detail Page */
+.voucher-gallery {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+.voucher-gallery-item {
+    width: 150px;
+    height: 150px;
+    border-radius: 8px;
+    overflow: hidden;
+    cursor: pointer;
+    border: 2px solid var(--border-color);
+    transition: all var(--transition-fast);
+    box-shadow: var(--shadow-sm);
+    position: relative;
+}
+
+.voucher-gallery-item::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0);
+    transition: background var(--transition-fast);
+}
+
+.voucher-gallery-item:hover {
+    transform: scale(1.05);
+    border-color: var(--primary-color);
+    box-shadow: var(--shadow-md);
+}
+
+.voucher-gallery-item:hover::after {
+    background: rgba(0, 0, 0, 0.1);
+}
+
+.voucher-gallery-item img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+/* Voucher Lightbox Modal */
+#voucherModal .modal-content {
+    border: none;
+    border-radius: 12px;
+}
+
+#voucherModal .modal-body {
+    background: #1a1a1a;
+    border-radius: 0 0 12px 12px;
+}
+
+#voucher-preview-img {
+    max-width: 100%;
+    max-height: 70vh;
+    object-fit: contain;
+}
+
+/* Voucher Lightbox Navigation */
+.voucher-nav-btn {
+    opacity: 0.7;
+    border-radius: 50%;
+    width: 50px;
+    height: 50px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all var(--transition-fast);
+}
+
+.voucher-nav-btn:hover {
+    opacity: 1;
+    background-color: rgba(255, 255, 255, 0.2);
+}
+
+.voucher-nav-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
+/* PDF Modal */
+#pdfModal .modal-content {
+    border: none;
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+#pdfModal .modal-header {
+    border-bottom: 1px solid var(--border-light);
+}
+
+/* Loading States */
+.spinner-border {
+    width: 2.5rem;
+    height: 2.5rem;
+}
+
+#upload-loading,
+#loading {
+    animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
+/* Success/Error Messages */
+.alert {
+    border-radius: 8px;
+    border: none;
+}
+
+.alert-success {
+    background-color: var(--success-light);
+    color: var(--success-color);
+}
+
+.alert-danger {
+    background-color: var(--danger-light);
+    color: var(--danger-color);
+}
+
+.alert-warning {
+    background-color: var(--warning-light);
+    color: #856404;
+}
+
+#success-message {
+    animation: slideIn 0.3s ease;
+}
+
+/* Empty State */
+#empty-state,
+#error-state {
+    animation: fadeIn 0.3s ease;
+}
+
+#empty-state i,
+#error-state i {
+    opacity: 0.5;
+}
+
+/* Stats Cards */
+.bg-opacity-10 {
+    padding: 0.5rem;
+}
+
+/* Action Buttons */
+.btn {
+    border-radius: 8px;
+    font-weight: 500;
+    transition: all var(--transition-fast);
+}
+
+.btn-primary {
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+}
+
+.btn-primary:hover {
+    background-color: var(--primary-dark);
+    border-color: var(--primary-dark);
+    transform: translateY(-1px);
+}
+
+.btn-outline-secondary:hover {
+    transform: translateY(-1px);
+}
+
+.btn-outline-primary:hover {
+    transform: translateY(-1px);
+}
+
+/* Form Controls */
+.form-control,
+.form-select {
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    padding: 0.5rem 0.75rem;
+    transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.form-control:focus,
+.form-select:focus {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.15);
+}
+
+.form-label {
+    font-weight: 500;
+    color: var(--text-dark);
+    margin-bottom: 0.5rem;
+}
+
+/* Input Group */
+.input-group .form-select {
+    border-radius: 8px 0 0 8px;
+}
+
+.input-group .btn {
+    border-radius: 0 8px 8px 0;
+}
+
+/* Modal Styles */
+.modal-content {
+    border: none;
+    border-radius: 12px;
+}
+
+.modal-header {
+    border-bottom: 1px solid var(--border-light);
+    padding: 1rem 1.25rem;
+}
+
+.modal-footer {
+    border-top: 1px solid var(--border-light);
+    padding: 1rem 1.25rem;
+}
+
+/* Responsive Adjustments */
+@media (max-width: 992px) {
+    .navbar-nav {
+        padding-top: 0.5rem;
+    }
+
+    .nav-link {
+        padding: 0.75rem 1rem !important;
+    }
+}
+
+@media (max-width: 768px) {
+    .login-card {
+        margin: 1rem;
+        padding: 1.5rem;
+    }
+
+    .drop-zone {
+        padding: 2rem 1rem;
+    }
+
+    .drop-zone i {
+        font-size: 2.5rem !important;
+    }
+
+    .voucher-gallery-item {
+        width: 100px;
+        height: 100px;
+    }
+
+    .voucher-thumbnail {
+        width: 70px;
+        height: 70px;
+    }
+
+    .table thead th {
+        font-size: 0.75rem;
+        padding: 0.75rem 0.5rem;
+    }
+
+    .table tbody td {
+        padding: 0.75rem 0.5rem;
+        font-size: 0.9rem;
+    }
+
+    /* Hide some columns on mobile */
+    .table .d-none-mobile {
+        display: none !important;
+    }
+
+    /* Stats on mobile */
+    .card-body .d-inline-flex {
+        display: block !important;
+        margin-bottom: 0.75rem;
+    }
+
+    .card-body .d-inline-flex:last-child {
+        margin-bottom: 0;
+    }
+
+    /* Modal adjustments */
+    .modal-dialog {
+        margin: 0.5rem;
+    }
+
+    .voucher-nav-btn {
+        width: 40px;
+        height: 40px;
+    }
+}
+
+@media (max-width: 576px) {
+    .container {
+        padding-left: 1rem;
+        padding-right: 1rem;
+    }
+
+    .card-body {
+        padding: 1rem;
+    }
+
+    .voucher-gallery-item {
+        width: calc(33.333% - 0.67rem);
+        height: auto;
+        aspect-ratio: 1;
+    }
+
+    .voucher-thumbnail {
+        width: 60px;
+        height: 60px;
+    }
+
+    .btn {
+        padding: 0.5rem 1rem;
+    }
+}
+
+/* Print Styles */
+@media print {
+
+    .navbar,
+    .btn,
+    #voucher-drop-zone,
+    .voucher-thumbnail .remove-btn {
+        display: none !important;
+    }
+
+    .card {
+        box-shadow: none !important;
+        border: 1px solid var(--border-color) !important;
+    }
+}

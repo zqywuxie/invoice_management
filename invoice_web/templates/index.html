@@ -1,0 +1,894 @@
+{% extends "base.html" %}
+
+{% block title %}发票列表 - 电子发票汇总系统{% endblock %}
+
+{% block content %}
+<div class="row">
+    <!-- Summary Statistics Panel -->
+    <div class="col-12 mb-4">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <div class="row align-items-center">
+                    <!-- Total Statistics -->
+                    <div class="col-md-3">
+                        <div class="d-flex align-items-center">
+                            <div class="bg-primary bg-opacity-10 rounded-circle p-3 me-3">
+                                <i class="bi bi-receipt text-primary fs-4"></i>
+                            </div>
+                            <div>
+                                <h6 class="text-muted mb-0">记录总数</h6>
+                                <h3 class="mb-0" id="totalCount">0</h3>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="d-flex align-items-center">
+                            <div class="bg-success bg-opacity-10 rounded-circle p-3 me-3">
+                                <i class="bi bi-currency-yen text-success fs-4"></i>
+                            </div>
+                            <div>
+                                <h6 class="text-muted mb-0">总金额</h6>
+                                <h3 class="mb-0" id="totalAmount">¥0.00</h3>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Categorized Statistics (Requirements: 13.6) -->
+                    <div class="col-md-3">
+                        <div class="d-flex align-items-center">
+                            <div class="bg-info bg-opacity-10 rounded-circle p-3 me-3">
+                                <i class="bi bi-file-earmark-pdf text-info fs-4"></i>
+                            </div>
+                            <div>
+                                <h6 class="text-muted mb-0">有发票记录</h6>
+                                <div class="d-flex align-items-baseline">
+                                    <span class="fs-5 fw-bold me-2" id="invoiceCount">0</span>
+                                    <small class="text-muted" id="invoiceAmount">¥0.00</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="d-flex align-items-center">
+                            <div class="bg-secondary bg-opacity-10 rounded-circle p-3 me-3">
+                                <i class="bi bi-pencil-square text-secondary fs-4"></i>
+                            </div>
+                            <div>
+                                <h6 class="text-muted mb-0">无票报销记录</h6>
+                                <div class="d-flex align-items-baseline">
+                                    <span class="fs-5 fw-bold me-2" id="manualCount">0</span>
+                                    <small class="text-muted" id="manualAmount">¥0.00</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="row mt-3">
+                    <div class="col-12 text-end">
+                        <button class="btn btn-primary me-2" id="uploadBtn">
+                            <i class="bi bi-upload me-1"></i>上传发票
+                        </button>
+                        <button class="btn btn-outline-info me-2" id="batchExportDocxBtn" disabled>
+                            <i class="bi bi-file-earmark-word me-1"></i>批量导出DOCX
+                        </button>
+                        <button class="btn btn-outline-success" id="exportBtn">
+                            <i class="bi bi-file-earmark-excel me-1"></i>导出Excel
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Search and Invoice Table -->
+    <div class="col-12">
+        <div class="card shadow-sm">
+            <div class="card-header bg-white py-3">
+                <div class="row align-items-center g-3">
+                    <div class="col-auto">
+                        <h5 class="mb-0 text-primary">
+                            <i class="bi bi-receipt me-2"></i>发票列表
+                        </h5>
+                    </div>
+                    <div class="col-auto flex-grow-1">
+                        <div class="d-flex flex-wrap gap-2 justify-content-end">
+                            <!-- 搜索框 -->
+                            <div class="search-box" style="min-width: 220px;">
+                                <div class="input-group input-group-sm">
+                                    <span class="input-group-text bg-light border-end-0">
+                                        <i class="bi bi-search text-muted"></i>
+                                    </span>
+                                    <input type="text" class="form-control border-start-0 bg-light" id="searchInput"
+                                        placeholder="搜索发票号码、项目名称...">
+                                    <button class="btn btn-light border" type="button" id="clearSearchBtn" title="清除搜索">
+                                        <i class="bi bi-x-lg text-muted"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <!-- 日期筛选 -->
+                            <div class="date-filter" style="min-width: 300px;">
+                                <div class="input-group input-group-sm">
+                                    <span class="input-group-text bg-light border-end-0">
+                                        <i class="bi bi-calendar3 text-muted"></i>
+                                    </span>
+                                    <input type="date" class="form-control bg-light border-start-0 border-end-0"
+                                        id="startDateInput" title="开始日期">
+                                    <span class="input-group-text bg-light border-start-0 border-end-0 px-2">
+                                        <small class="text-muted">至</small>
+                                    </span>
+                                    <input type="date" class="form-control bg-light border-start-0" id="endDateInput"
+                                        title="结束日期">
+                                    <button class="btn btn-primary btn-sm" type="button" id="applyDateFilterBtn"
+                                        title="应用筛选">
+                                        <i class="bi bi-funnel-fill"></i>
+                                    </button>
+                                    <button class="btn btn-outline-secondary btn-sm" type="button"
+                                        id="clearDateFilterBtn" title="清除日期">
+                                        <i class="bi bi-x-lg"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <!-- 人员筛选 -->
+                            <div class="person-filter" style="min-width: 280px;">
+                                <div class="input-group input-group-sm">
+                                    <span class="input-group-text bg-light border-end-0">
+                                        <i class="bi bi-people text-muted"></i>
+                                    </span>
+                                    <select class="form-select bg-light border-start-0 border-end-0"
+                                        id="personFilterSelect" title="按报销人筛选">
+                                        <option value="">全部报销人</option>
+                                    </select>
+                                    <select class="form-select bg-light border-start-0" id="uploaderFilterSelect"
+                                        title="按上传人筛选">
+                                        <option value="">全部上传人</option>
+                                    </select>
+                                    <button class="btn btn-outline-secondary btn-sm" type="button"
+                                        id="clearPersonFilterBtn" title="清除人员筛选">
+                                        <i class="bi bi-x-lg"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="card-body p-0">
+                <!-- Status Tabs -->
+                <ul class="nav nav-tabs px-3 pt-2" id="statusTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="tab-all" data-status="" type="button" role="tab">
+                            全部 <span class="badge bg-secondary ms-1" id="countAll">0</span>
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="tab-pending" data-status="未报销" type="button" role="tab">
+                            未报销 <span class="badge bg-warning text-dark ms-1" id="countPending">0</span>
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="tab-completed" data-status="已报销" type="button" role="tab">
+                            已报销 <span class="badge bg-success ms-1" id="countCompleted">0</span>
+                        </button>
+                    </li>
+                </ul>
+                <!-- Record Type Filter (Requirements: 13.4, 13.5) -->
+                <div class="px-3 py-2 bg-light border-bottom">
+                    <div class="d-flex align-items-center gap-2">
+                        <label class="text-muted mb-0 me-2" style="font-size: 0.875rem;">
+                            <i class="bi bi-funnel me-1"></i>记录类型：
+                        </label>
+                        <div class="btn-group btn-group-sm" role="group" aria-label="记录类型筛选">
+                            <input type="radio" class="btn-check" name="adminRecordTypeFilter" id="admin-filter-all"
+                                value="" checked autocomplete="off">
+                            <label class="btn btn-outline-secondary" for="admin-filter-all">
+                                <i class="bi bi-list-ul me-1"></i>全部
+                            </label>
+
+                            <input type="radio" class="btn-check" name="adminRecordTypeFilter" id="admin-filter-invoice"
+                                value="invoice" autocomplete="off">
+                            <label class="btn btn-outline-primary" for="admin-filter-invoice">
+                                <i class="bi bi-file-earmark-pdf me-1"></i>有发票
+                            </label>
+
+                            <input type="radio" class="btn-check" name="adminRecordTypeFilter" id="admin-filter-manual"
+                                value="manual" autocomplete="off">
+                            <label class="btn btn-outline-secondary" for="admin-filter-manual">
+                                <i class="bi bi-pencil-square me-1"></i>无票报销
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0" id="invoiceTable">
+                        <thead class="table-light">
+                            <tr>
+                                <th class="text-center" style="width: 40px;">
+                                    <input type="checkbox" class="form-check-input" id="selectAllCheckbox" title="全选">
+                                </th>
+                                <th class="sortable" data-sort="invoice_number">
+                                    发票号码 <i class="bi bi-arrow-down-up sort-icon"></i>
+                                </th>
+                                <th class="sortable" data-sort="invoice_date">
+                                    开票日期 <i class="bi bi-arrow-down-up sort-icon"></i>
+                                </th>
+                                <th class="sortable" data-sort="item_name">
+                                    项目名称 <i class="bi bi-arrow-down-up sort-icon"></i>
+                                </th>
+                                <th class="sortable text-end" data-sort="amount">
+                                    金额 <i class="bi bi-arrow-down-up sort-icon"></i>
+                                </th>
+                                <th class="sortable" data-sort="reimbursement_person_name">
+                                    报销人 <i class="bi bi-arrow-down-up sort-icon"></i>
+                                </th>
+                                <th class="sortable" data-sort="remark">
+                                    备注 <i class="bi bi-arrow-down-up sort-icon"></i>
+                                </th>
+                                <th class="sortable" data-sort="uploaded_by">
+                                    上传人 <i class="bi bi-arrow-down-up sort-icon"></i>
+                                </th>
+                                <th class="sortable" data-sort="scan_time">
+                                    上传时间 <i class="bi bi-arrow-down-up sort-icon"></i>
+                                </th>
+                                <th class="sortable" data-sort="reimbursement_status">
+                                    报销状态 <i class="bi bi-arrow-down-up sort-icon"></i>
+                                </th>
+                                <th class="sortable" data-sort="record_type">
+                                    记录类型 <i class="bi bi-arrow-down-up sort-icon"></i>
+                                </th>
+                                <th class="text-center">凭证</th>
+                                <th class="text-center">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="invoiceTableBody">
+                            <!-- Invoice rows will be rendered here by JavaScript -->
+                        </tbody>
+                    </table>
+                </div>
+                <!-- Empty State -->
+                <div class="text-center py-5 d-none" id="emptyState">
+                    <i class="bi bi-inbox text-muted" style="font-size: 4rem;"></i>
+                    <p class="text-muted mt-3">暂无发票数据</p>
+                    <button class="btn btn-primary" id="uploadBtnEmpty">
+                        <i class="bi bi-upload me-1"></i>上传第一张发票
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Hidden File Input for Upload -->
+<input type="file" id="fileInput" accept=".pdf" multiple class="d-none">
+
+<!-- Upload Invoice with Vouchers Modal -->
+<div class="modal fade" id="uploadInvoiceModal" tabindex="-1" aria-labelledby="uploadInvoiceModalLabel"
+    aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="uploadInvoiceModalLabel">
+                    <i class="bi bi-upload me-2"></i>上传发票
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"
+                    aria-label="Close"></button>
+            </div>
+            <div class="modal-body" style="max-height: 70vh; overflow-y: auto;">
+                <form id="uploadInvoiceForm">
+                    <!-- 添加报销人区域 -->
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <label class="form-label mb-0 fw-bold">
+                            <i class="bi bi-people me-1"></i>报销人列表 <span class="text-danger">*</span>
+                        </label>
+                        <button type="button" class="btn btn-sm btn-primary" id="addPersonGroupBtn">
+                            <i class="bi bi-person-plus me-1"></i>添加报销人
+                        </button>
+                    </div>
+
+                    <div id="personGroupsContainer">
+                        <!-- Person groups will be added here dynamically -->
+                    </div>
+
+                    <div class="alert alert-info small" id="uploadHint">
+                        <i class="bi bi-info-circle me-1"></i>
+                        点击"添加报销人"按钮添加报销人，然后为每个报销人添加发票记录
+                    </div>
+
+                    <div class="alert alert-danger d-none" id="uploadInvoiceError"></div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="submit" form="uploadInvoiceForm" class="btn btn-primary" id="submitUploadBtn">
+                    <i class="bi bi-upload me-1"></i>上传全部
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Invoice Detail Modal -->
+<div class="modal fade" id="detailModal" tabindex="-1" aria-labelledby="detailModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="detailModalLabel">
+                    <i class="bi bi-receipt me-2"></i>发票详情
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label text-muted">发票号码</label>
+                        <p class="fw-semibold" id="detailInvoiceNumber">-</p>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label text-muted">开票日期</label>
+                        <p class="fw-semibold" id="detailInvoiceDate">-</p>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label text-muted">项目名称</label>
+                        <p class="fw-semibold" id="detailItemName">-</p>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label text-muted">金额</label>
+                        <p class="fw-semibold text-success fs-5" id="detailAmount">-</p>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label text-muted">报销人</label>
+                        <p class="fw-semibold" id="detailReimbursementPerson">-</p>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label text-muted">备注</label>
+                        <p class="fw-semibold" id="detailRemark">-</p>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label text-muted">上传人</label>
+                        <p class="fw-semibold" id="detailUploadedBy">-</p>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label text-muted">上传时间</label>
+                        <p class="fw-semibold" id="detailScanTime">-</p>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label text-muted">文件</label>
+                        <p class="fw-semibold text-truncate" id="detailFilePath" title="">-</p>
+                    </div>
+                </div>
+
+                <!-- Voucher Gallery Section -->
+                <hr class="my-3">
+                <div class="voucher-section">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h6 class="mb-0">
+                            <i class="bi bi-images me-2"></i>支出凭证
+                            <span class="badge bg-secondary ms-2" id="detailVoucherCount">0</span>
+                        </h6>
+                        <button type="button" class="btn btn-sm btn-outline-primary" id="addVoucherBtn">
+                            <i class="bi bi-plus-lg me-1"></i>添加凭证
+                        </button>
+                    </div>
+                    <div id="voucherGallery" class="voucher-gallery d-flex flex-wrap gap-2">
+                        <!-- Voucher thumbnails will be rendered here -->
+                    </div>
+                    <div id="noVouchersMessage" class="text-muted text-center py-3 d-none">
+                        <i class="bi bi-image text-muted" style="font-size: 2rem;"></i>
+                        <p class="mb-0 mt-2">暂无支出凭证</p>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-success" id="exportDocxBtn">
+                    <i class="bi bi-file-earmark-word me-1"></i>导出DOCX
+                </button>
+                <button type="button" class="btn btn-outline-info" id="previewPdfBtn">
+                    <i class="bi bi-eye me-1"></i>预览PDF
+                </button>
+                <button type="button" class="btn btn-outline-primary" id="downloadPdfBtn">
+                    <i class="bi bi-download me-1"></i>下载PDF
+                </button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Voucher Preview Lightbox Modal -->
+<div class="modal fade" id="voucherLightboxModal" tabindex="-1" aria-labelledby="voucherLightboxModalLabel"
+    aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
+        <div class="modal-content bg-dark">
+            <div class="modal-header border-0 py-2">
+                <h6 class="modal-title text-white" id="voucherLightboxModalLabel">
+                    <i class="bi bi-image me-2"></i>凭证预览
+                    <span id="voucherLightboxIndex" class="ms-2 text-muted"></span>
+                </h6>
+                <div class="d-flex align-items-center">
+                    <button type="button" class="btn btn-sm btn-outline-light me-2" id="zoomInBtn" title="放大">
+                        <i class="bi bi-zoom-in"></i>
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-light me-2" id="zoomOutBtn" title="缩小">
+                        <i class="bi bi-zoom-out"></i>
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-light me-2" id="zoomResetBtn" title="重置">
+                        <i class="bi bi-arrows-angle-contract"></i>
+                    </button>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"
+                        aria-label="Close"></button>
+                </div>
+            </div>
+            <div class="modal-body p-0 position-relative" style="height: 80vh; overflow: hidden;">
+                <div id="voucherImageContainer" class="voucher-image-container">
+                    <img id="voucherLightboxImage" src="" alt="凭证预览" class="voucher-lightbox-img">
+                </div>
+                <!-- Navigation buttons -->
+                <button type="button"
+                    class="btn btn-dark position-absolute start-0 top-50 translate-middle-y ms-2 voucher-nav-btn"
+                    id="prevVoucherBtn">
+                    <i class="bi bi-chevron-left fs-4"></i>
+                </button>
+                <button type="button"
+                    class="btn btn-dark position-absolute end-0 top-50 translate-middle-y me-2 voucher-nav-btn"
+                    id="nextVoucherBtn">
+                    <i class="bi bi-chevron-right fs-4"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add Voucher Modal -->
+<div class="modal fade" id="addVoucherModal" tabindex="-1" aria-labelledby="addVoucherModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="addVoucherModalLabel">
+                    <i class="bi bi-plus-circle me-2"></i>添加支出凭证
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"
+                    aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addVoucherForm">
+                    <div class="mb-3">
+                        <label for="newVoucherInput" class="form-label">选择凭证图片</label>
+                        <input type="file" class="form-control" id="newVoucherInput" accept=".jpg,.jpeg,.png" multiple
+                            required>
+                        <div class="form-text">支持JPG、PNG格式，可选择多张</div>
+                    </div>
+                    <div id="newVoucherPreviewContainer" class="d-flex flex-wrap gap-2"></div>
+                    <div class="alert alert-danger d-none" id="addVoucherError"></div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="submit" form="addVoucherForm" class="btn btn-primary">
+                    <i class="bi bi-upload me-1"></i>上传
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- PDF Preview Modal -->
+<div class="modal fade" id="pdfPreviewModal" tabindex="-1" aria-labelledby="pdfPreviewModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
+        <div class="modal-content" style="height: 90vh;">
+            <div class="modal-header py-2">
+                <h5 class="modal-title" id="pdfPreviewModalLabel">
+                    <i class="bi bi-file-earmark-pdf me-2"></i>发票预览
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-0">
+                <iframe id="pdfPreviewFrame" src="" style="width: 100%; height: 100%; border: none;"></iframe>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<!-- Delete Confirmation Modal -->
+<div class="modal fade" id="deleteModal" tabindex="-1" aria-labelledby="deleteModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title" id="deleteModalLabel">
+                    <i class="bi bi-exclamation-triangle me-2"></i>确认删除
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"
+                    aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>确定要删除以下发票吗？此操作无法撤销。</p>
+                <div class="alert alert-light">
+                    <strong>发票号码：</strong><span id="deleteInvoiceNumber">-</span><br>
+                    <strong>项目名称：</strong><span id="deleteItemName">-</span><br>
+                    <strong>金额：</strong><span id="deleteAmount">-</span>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-danger" id="confirmDeleteBtn">
+                    <i class="bi bi-trash me-1"></i>确认删除
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Duplicate Warning Modal -->
+<div class="modal fade" id="duplicateModal" tabindex="-1" aria-labelledby="duplicateModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-warning">
+                <h5 class="modal-title" id="duplicateModalLabel">
+                    <i class="bi bi-exclamation-circle me-2"></i>发现重复发票
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted">系统检测到该发票号码已存在，以下是新上传发票与现有发票的对比：</p>
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="card border-warning">
+                            <div class="card-header bg-warning bg-opacity-25">
+                                <strong>新上传发票</strong>
+                            </div>
+                            <div class="card-body">
+                                <p><strong>发票号码：</strong><span id="newInvoiceNumber">-</span></p>
+                                <p><strong>开票日期：</strong><span id="newInvoiceDate">-</span></p>
+                                <p><strong>项目名称：</strong><span id="newItemName">-</span></p>
+                                <p><strong>金额：</strong><span id="newAmount">-</span></p>
+                                <p><strong>备注：</strong><span id="newRemark">-</span></p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card border-primary">
+                            <div class="card-header bg-primary bg-opacity-25">
+                                <strong>现有发票（已存在）</strong>
+                            </div>
+                            <div class="card-body">
+                                <p><strong>发票号码：</strong><span id="existingInvoiceNumber">-</span></p>
+                                <p><strong>开票日期：</strong><span id="existingInvoiceDate">-</span></p>
+                                <p><strong>项目名称：</strong><span id="existingItemName">-</span></p>
+                                <p><strong>金额：</strong><span id="existingAmount">-</span></p>
+                                <p><strong>备注：</strong><span id="existingRemark">-</span></p>
+                                <hr>
+                                <p class="mb-1"><strong>上传人：</strong><span id="existingUploadedBy"
+                                        class="text-primary">-</span></p>
+                                <p class="mb-0"><strong>上传时间：</strong><span id="existingScanTime"
+                                        class="text-muted">-</span></p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">知道了</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Upload Progress Modal -->
+<div class="modal fade" id="uploadProgressModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false"
+    aria-labelledby="uploadProgressModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="uploadProgressModalLabel">
+                    <i class="bi bi-upload me-2"></i>上传中...
+                </h5>
+            </div>
+            <div class="modal-body">
+                <div class="progress mb-3">
+                    <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar"
+                        id="uploadProgressBar" style="width: 0%"></div>
+                </div>
+                <p class="text-muted mb-0" id="uploadProgressText">正在处理...</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Login Modal -->
+<div class="modal fade" id="loginModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false"
+    aria-labelledby="loginModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="loginModalLabel">
+                    <i class="bi bi-person-circle me-2"></i>用户登录
+                </h5>
+            </div>
+            <div class="modal-body">
+                <form id="loginForm">
+                    <div class="mb-3">
+                        <label for="loginUsername" class="form-label">用户名</label>
+                        <input type="text" class="form-control" id="loginUsername" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="loginPassword" class="form-label">密码</label>
+                        <input type="password" class="form-control" id="loginPassword" required>
+                    </div>
+                    <div class="alert alert-danger d-none" id="loginError"></div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="submit" form="loginForm" class="btn btn-primary w-100">
+                    <i class="bi bi-box-arrow-in-right me-1"></i>登录
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Invoice Modal -->
+<div class="modal fade" id="editModal" tabindex="-1" aria-labelledby="editModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-warning">
+                <h5 class="modal-title" id="editModalLabel">
+                    <i class="bi bi-pencil-square me-2"></i>修改发票
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="editForm">
+                    <div class="mb-3">
+                        <label for="editInvoiceNumber" class="form-label">发票号码</label>
+                        <input type="text" class="form-control" id="editInvoiceNumber" readonly disabled>
+                    </div>
+                    <div class="mb-3">
+                        <label for="editInvoiceDate" class="form-label">开票日期 <span class="text-danger">*</span></label>
+                        <input type="date" class="form-control" id="editInvoiceDate" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="editItemName" class="form-label">项目名称</label>
+                        <input type="text" class="form-control" id="editItemName">
+                    </div>
+                    <div class="mb-3">
+                        <label for="editAmount" class="form-label">金额 <span class="text-danger">*</span></label>
+                        <div class="input-group">
+                            <span class="input-group-text">¥</span>
+                            <input type="number" class="form-control" id="editAmount" step="0.01" min="0.01" required>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="editRemark" class="form-label">备注</label>
+                        <textarea class="form-control" id="editRemark" rows="2"></textarea>
+                    </div>
+                    <div class="alert alert-danger d-none" id="editError"></div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="submit" form="editForm" class="btn btn-warning">
+                    <i class="bi bi-check-lg me-1"></i>保存修改
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Signature Edit Modal (Admin Only) -->
+<div class="modal fade" id="signatureModal" tabindex="-1" aria-labelledby="signatureModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header bg-info text-white">
+                <h5 class="modal-title" id="signatureModalLabel">
+                    <i class="bi bi-pen me-2"></i>电子签章管理
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"
+                    aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <!-- PDF Preview Area -->
+                    <div class="col-md-8">
+                        <div class="card">
+                            <div class="card-header bg-light">
+                                <h6 class="mb-0"><i class="bi bi-file-earmark-pdf me-2"></i>发票预览</h6>
+                            </div>
+                            <div class="card-body p-0 position-relative" id="signaturePdfContainer"
+                                style="height: 500px; overflow: hidden;">
+                                <iframe id="signaturePdfFrame" src=""
+                                    style="width: 100%; height: 100%; border: none; position: relative; z-index: 1;"></iframe>
+                                <!-- Signature overlay for positioning -->
+                                <div id="signatureOverlay" class="position-absolute d-none"
+                                    style="cursor: move; border: 2px dashed #dc3545; background: rgba(220, 53, 69, 0.15); z-index: 10; pointer-events: auto;">
+                                    <img id="signaturePreviewImg" src=""
+                                        style="width: 100%; height: 100%; object-fit: contain; pointer-events: none;">
+                                    <div class="position-absolute bottom-0 end-0 p-1">
+                                        <span class="badge bg-danger" style="font-size: 10px;">拖拽调整位置</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Signature Controls -->
+                    <div class="col-md-4">
+                        <div class="card mb-3">
+                            <div class="card-header bg-light">
+                                <h6 class="mb-0"><i class="bi bi-collection me-2"></i>签章库</h6>
+                            </div>
+                            <div class="card-body">
+                                <div class="mb-2">
+                                    <label class="form-label small">选择已有签章</label>
+                                    <select class="form-select form-select-sm" id="signatureTemplateSelect">
+                                        <option value="">-- 选择签章模板 --</option>
+                                    </select>
+                                </div>
+                                <div class="d-flex gap-1">
+                                    <button type="button" class="btn btn-sm btn-outline-danger flex-grow-1"
+                                        id="deleteTemplateBtn">
+                                        <i class="bi bi-trash"></i> 删除模板
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="card mb-3">
+                            <div class="card-header bg-light">
+                                <h6 class="mb-0"><i class="bi bi-upload me-2"></i>上传新签章</h6>
+                            </div>
+                            <div class="card-body">
+                                <div class="mb-2">
+                                    <input type="file" class="form-control form-control-sm" id="signatureFileInput"
+                                        accept=".png,.jpg,.jpeg">
+                                    <div class="form-text">支持PNG、JPG格式，建议使用透明背景PNG</div>
+                                </div>
+                                <button type="button" class="btn btn-sm btn-outline-primary w-100"
+                                    id="uploadTemplateBtn">
+                                    <i class="bi bi-plus-lg me-1"></i>保存到签章库
+                                </button>
+                                <div id="currentSignatureInfo" class="d-none mt-2">
+                                    <div class="alert alert-success py-2 mb-0">
+                                        <i class="bi bi-check-circle me-1"></i>
+                                        <span id="currentSignatureFilename">已上传签章</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="card mb-3">
+                            <div class="card-header bg-light">
+                                <h6 class="mb-0"><i class="bi bi-arrows-move me-2"></i>位置设置</h6>
+                            </div>
+                            <div class="card-body">
+                                <div class="alert alert-info py-2 mb-2 small">
+                                    <i class="bi bi-info-circle me-1"></i>
+                                    PDF尺寸: <span id="pdfDimensionsInfo">-</span>
+                                    <br>拖拽红框调整位置，或直接输入坐标
+                                    <br><span class="text-muted">提示：预览位置为参考，以输入坐标为准</span>
+                                </div>
+                                <div class="row g-2 mb-2">
+                                    <div class="col-6">
+                                        <label class="form-label small">X坐标 (从左)</label>
+                                        <input type="number" class="form-control form-control-sm" id="signatureX"
+                                            value="400" min="0">
+                                    </div>
+                                    <div class="col-6">
+                                        <label class="form-label small">Y坐标 (从上)</label>
+                                        <input type="number" class="form-control form-control-sm" id="signatureY"
+                                            value="200" min="0">
+                                    </div>
+                                </div>
+                                <div class="row g-2 mb-2">
+                                    <div class="col-6">
+                                        <label class="form-label small">宽度</label>
+                                        <input type="number" class="form-control form-control-sm" id="signatureWidth"
+                                            value="100" min="20">
+                                    </div>
+                                    <div class="col-6">
+                                        <label class="form-label small">高度</label>
+                                        <input type="number" class="form-control form-control-sm" id="signatureHeight"
+                                            value="100" min="20">
+                                    </div>
+                                </div>
+                                <div class="mb-2">
+                                    <label class="form-label small">页码</label>
+                                    <input type="number" class="form-control form-control-sm" id="signaturePage"
+                                        value="0" min="0">
+                                    <div class="form-text">从0开始，0表示第一页</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="d-grid gap-2">
+                            <button type="button" class="btn btn-primary" id="saveSignatureBtn">
+                                <i class="bi bi-check-lg me-1"></i>保存签章
+                            </button>
+                            <button type="button" class="btn btn-outline-success" id="exportSignedPdfBtn">
+                                <i class="bi bi-download me-1"></i>导出带签章PDF
+                            </button>
+                            <button type="button" class="btn btn-outline-danger" id="deleteSignatureBtn">
+                                <i class="bi bi-trash me-1"></i>删除签章
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- User Management Modal (Admin Only) -->
+<div class="modal fade" id="userManagementModal" tabindex="-1" aria-labelledby="userManagementModalLabel"
+    aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="userManagementModalLabel">
+                    <i class="bi bi-people me-2"></i>用户管理
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"
+                    aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <!-- User List Section -->
+                <div id="userListSection">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h6 class="mb-0">用户列表</h6>
+                        <button class="btn btn-sm btn-primary" onclick="UserManagement.showAddForm()">
+                            <i class="bi bi-plus-lg me-1"></i>添加用户
+                        </button>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-hover table-sm">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>用户名</th>
+                                    <th>显示名称</th>
+                                    <th>角色</th>
+                                    <th>创建时间</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="userListBody">
+                                <!-- User rows will be rendered here -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- User Form Section (Add/Edit) -->
+                <div id="userFormSection" class="d-none">
+                    <h6 id="userFormTitle" class="mb-3">添加用户</h6>
+                    <form id="userForm" onsubmit="event.preventDefault(); UserManagement.submitForm();">
+                        <div class="mb-3">
+                            <label for="userFormUsername" class="form-label">用户名 <span
+                                    class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="userFormUsername" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="userFormDisplayName" class="form-label">显示名称 <span
+                                    class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="userFormDisplayName" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="userFormPassword" class="form-label">密码</label>
+                            <input type="password" class="form-control" id="userFormPassword">
+                            <div class="form-text" id="userFormPasswordHint">密码长度至少6位</div>
+                        </div>
+                        <div class="mb-3 form-check">
+                            <input type="checkbox" class="form-check-input" id="userFormIsAdmin">
+                            <label class="form-check-label" for="userFormIsAdmin">管理员权限</label>
+                        </div>
+                        <div class="alert alert-danger d-none" id="userFormError"></div>
+                        <div class="d-flex gap-2">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="bi bi-check-lg me-1"></i>保存
+                            </button>
+                            <button type="button" class="btn btn-secondary" onclick="UserManagement.cancelForm()">
+                                取消
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

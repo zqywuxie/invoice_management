@@ -1,0 +1,557 @@
+{% extends "user/base_user.html" %}
+
+{% block title %}上传发票{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-10 mx-auto">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h4 class="mb-0"><i class="bi bi-upload text-primary me-2"></i>上传发票</h4>
+        </div>
+
+        <!-- Upload Mode Selector -->
+        <div class="card shadow-sm mb-4">
+            <div class="card-body">
+                <div class="upload-mode-selector">
+                    <button class="mode-btn active" data-mode="pdf" id="pdf-mode-btn">
+                        <i class="bi bi-file-earmark-pdf"></i>
+                        <span>上传发票PDF</span>
+                    </button>
+                    <button class="mode-btn" data-mode="manual" id="manual-mode-btn">
+                        <i class="bi bi-pencil-square"></i>
+                        <span>无票报销</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Upload Area -->
+        <div class="card shadow-sm mb-4" id="upload-area">
+            <div class="card-body">
+                <div class="drop-zone" id="drop-zone">
+                    <i class="bi bi-file-earmark-pdf display-3 text-primary mb-3"></i>
+                    <h5>拖拽PDF文件到此处</h5>
+                    <p class="text-muted mb-0">或点击选择文件（支持多选）</p>
+                    <input type="file" id="pdf-input" accept=".pdf" multiple class="d-none">
+                </div>
+                <div id="upload-loading" class="text-center py-5 d-none">
+                    <div class="spinner-border text-primary mb-3" role="status">
+                        <span class="visually-hidden">加载中...</span>
+                    </div>
+                    <p class="text-muted mb-0">正在解析PDF，请稍候...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Manual Entry Form -->
+        <div class="card shadow-sm mb-4" id="manual-entry-area" style="display: none;">
+            <div class="card-body">
+                <form id="manual-entry-form" class="manual-form">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="manual-item-name" class="form-label">
+                                费用项目名称 <span class="text-danger">*</span>
+                            </label>
+                            <input type="text" class="form-control" id="manual-item-name" name="item_name"
+                                placeholder="例如：交通费、办公用品、餐费等" required>
+                            <div class="invalid-feedback" id="manual-item-name-error"></div>
+                        </div>
+
+                        <div class="col-md-6 mb-3">
+                            <label for="manual-amount" class="form-label">
+                                金额（元）<span class="text-danger">*</span>
+                            </label>
+                            <input type="number" class="form-control" id="manual-amount" name="amount" step="0.01"
+                                min="0.01" placeholder="0.00" required>
+                            <div class="invalid-feedback" id="manual-amount-error"></div>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="manual-invoice-date" class="form-label">
+                                日期 <span class="text-danger">*</span>
+                            </label>
+                            <input type="date" class="form-control" id="manual-invoice-date" name="invoice_date"
+                                required>
+                            <div class="invalid-feedback" id="manual-invoice-date-error"></div>
+                        </div>
+
+                        <div class="col-md-6 mb-3">
+                            <label for="manual-reimbursement-person" class="form-label">
+                                <i class="bi bi-person me-1"></i>报销人
+                            </label>
+                            <div class="input-group">
+                                <select class="form-select" id="manual-reimbursement-person"
+                                    name="reimbursement_person_id">
+                                    <option value="">请选择</option>
+                                    <!-- 动态加载报销人列表 -->
+                                </select>
+                                <button class="btn btn-outline-primary" type="button" id="manual-add-person-btn">
+                                    <i class="bi bi-plus-lg"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="manual-remark" class="form-label">备注</label>
+                        <textarea class="form-control" id="manual-remark" name="remark" rows="3"
+                            placeholder="请输入备注信息（可选）"></textarea>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="manual-voucher-files" class="form-label">
+                            <i class="bi bi-images me-1"></i>支出凭证（可选）
+                        </label>
+                        <input type="file" class="form-control" id="manual-voucher-files" name="voucher_files[]"
+                            accept="image/jpeg,image/png" multiple>
+                        <small class="form-text text-muted">支持JPG、PNG格式，可上传多张</small>
+                        <div class="voucher-preview mt-2" id="manual-voucher-preview"></div>
+                    </div>
+
+                    <div class="form-actions d-flex gap-2">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-check-lg me-1"></i>提交
+                        </button>
+                        <button type="reset" class="btn btn-secondary">
+                            <i class="bi bi-arrow-clockwise me-1"></i>重置
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Draft Invoice List (暂存列表) -->
+        <div class="card shadow-sm mb-4 d-none" id="draft-list-card">
+            <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">
+                    <i class="bi bi-inbox text-warning me-2"></i>暂存发票
+                    <span class="badge bg-warning text-dark ms-2" id="draft-count">0</span>
+                </h5>
+                <div>
+                    <button class="btn btn-sm btn-outline-danger me-2" id="clear-all-drafts-btn">
+                        <i class="bi bi-trash me-1"></i>清空全部
+                    </button>
+                    <button class="btn btn-sm btn-primary" id="submit-all-btn">
+                        <i class="bi bi-check-all me-1"></i>全部提交
+                    </button>
+                </div>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width: 40px;">
+                                    <input type="checkbox" class="form-check-input" id="select-all-drafts">
+                                </th>
+                                <th>发票号码</th>
+                                <th>开票日期</th>
+                                <th>项目名称</th>
+                                <th class="text-end">金额</th>
+                                <th>报销人</th>
+                                <th class="text-center">凭证</th>
+                                <th class="text-center">状态</th>
+                                <th class="text-center">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="draft-list-body">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="card-footer bg-white">
+                <div class="d-flex justify-content-between align-items-center">
+                    <span class="text-muted">
+                        已选择 <span id="selected-count">0</span> 张，
+                        总金额：<span class="text-success fw-bold" id="selected-amount">¥0.00</span>
+                    </span>
+                    <button class="btn btn-primary" id="submit-selected-btn" disabled>
+                        <i class="bi bi-upload me-1"></i>提交选中
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Success Message -->
+        <div class="alert alert-success d-none" id="success-message">
+            <i class="bi bi-check-circle me-2"></i>
+            <span id="success-text">发票上传成功！</span>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Draft Modal -->
+<div class="modal fade" id="editDraftModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-pencil me-2"></i>编辑暂存发票
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">发票号码</label>
+                        <input type="text" class="form-control" id="edit-invoice-number" readonly>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">开票日期</label>
+                        <input type="text" class="form-control" id="edit-invoice-date" readonly>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">项目名称</label>
+                        <input type="text" class="form-control" id="edit-item-name" readonly>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">金额</label>
+                        <input type="text" class="form-control" id="edit-amount" readonly>
+                    </div>
+                </div>
+                <hr>
+                <!-- Reimbursement Person -->
+                <div class="mb-3">
+                    <label class="form-label"><i class="bi bi-person me-1"></i>报销人</label>
+                    <div class="input-group">
+                        <select class="form-select" id="edit-person-select">
+                            <option value="">-- 选择报销人 --</option>
+                        </select>
+                        <button class="btn btn-outline-primary" type="button" id="edit-add-person-btn">
+                            <i class="bi bi-plus-lg"></i>
+                        </button>
+                    </div>
+                </div>
+                <!-- Contract Upload (for large invoices) -->
+                <div class="mb-3 d-none" id="contract-upload-section">
+                    <label class="form-label">
+                        <i class="bi bi-file-earmark-text me-1 text-danger"></i>合同文件
+                        <span class="badge bg-danger ms-1">必填</span>
+                        <span class="text-muted small">（金额超过10000元需上传合同）</span>
+                    </label>
+                    <div class="contract-upload-area">
+                        <input type="file" id="edit-contract-input" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                            class="d-none">
+                        <div class="contract-drop-zone" id="edit-contract-drop-zone">
+                            <i class="bi bi-file-earmark-text text-muted"></i>
+                            <span class="text-muted">点击或拖拽上传合同（PDF/DOC/图片）</span>
+                        </div>
+                        <div class="contract-file-info mt-2 d-none" id="edit-contract-file-info">
+                            <span class="badge bg-success">
+                                <i class="bi bi-check-circle me-1"></i>
+                                <span id="edit-contract-filename"></span>
+                            </span>
+                            <button type="button" class="btn btn-sm btn-link text-danger" id="remove-contract-btn">
+                                <i class="bi bi-x-lg"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <!-- Voucher Upload -->
+                <div class="mb-3">
+                    <label class="form-label">
+                        <i class="bi bi-images me-1"></i>支出凭证
+                        <span class="text-muted small">（可选，支持JPG/PNG）</span>
+                    </label>
+                    <div class="voucher-upload-area">
+                        <input type="file" id="edit-voucher-input" accept=".jpg,.jpeg,.png" multiple class="d-none">
+                        <div class="voucher-drop-zone" id="edit-voucher-drop-zone">
+                            <i class="bi bi-images text-muted"></i>
+                            <span class="text-muted">点击或拖拽添加凭证图片</span>
+                        </div>
+                        <div class="voucher-thumbnails mt-2" id="edit-voucher-thumbnails"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" id="save-draft-btn">
+                    <i class="bi bi-check-lg me-1"></i>保存
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add Person Modal -->
+<div class="modal fade" id="addPersonModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-person-plus me-2"></i>新建报销人</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label for="new-person-name" class="form-label">姓名</label>
+                    <input type="text" class="form-control" id="new-person-name" placeholder="请输入报销人姓名">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" id="save-person-btn">
+                    <i class="bi bi-check-lg me-1"></i>保存
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Submit Progress Modal -->
+<div class="modal fade" id="submitProgressModal" tabindex="-1" data-bs-backdrop="static" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-upload me-2"></i>正在提交...</h5>
+            </div>
+            <div class="modal-body">
+                <div class="progress mb-3">
+                    <div class="progress-bar progress-bar-striped progress-bar-animated" id="submit-progress-bar"
+                        style="width: 0%"></div>
+                </div>
+                <p class="text-muted mb-0" id="submit-progress-text">准备中...</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    .upload-mode-selector {
+        display: flex;
+        gap: 16px;
+        justify-content: center;
+    }
+
+    .mode-btn {
+        flex: 1;
+        max-width: 300px;
+        padding: 24px 32px;
+        border: 2px solid #dee2e6;
+        border-radius: 8px;
+        background: white;
+        cursor: pointer;
+        transition: all 0.3s;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 12px;
+    }
+
+    .mode-btn i {
+        font-size: 2.5rem;
+        color: #6c757d;
+        transition: color 0.3s;
+    }
+
+    .mode-btn span {
+        font-size: 1rem;
+        font-weight: 500;
+        color: #495057;
+        transition: color 0.3s;
+    }
+
+    .mode-btn:hover {
+        border-color: #0d6efd;
+        background-color: #f8f9fa;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    }
+
+    .mode-btn:hover i,
+    .mode-btn:hover span {
+        color: #0d6efd;
+    }
+
+    .mode-btn.active {
+        border-color: #0d6efd;
+        background-color: #e7f1ff;
+    }
+
+    .mode-btn.active i,
+    .mode-btn.active span {
+        color: #0d6efd;
+    }
+
+    .drop-zone {
+        border: 2px dashed #dee2e6;
+        border-radius: 8px;
+        padding: 60px 20px;
+        text-align: center;
+        cursor: pointer;
+        transition: all 0.3s;
+    }
+
+    .drop-zone:hover,
+    .drop-zone.dragover {
+        border-color: #0d6efd;
+        background-color: #f8f9fa;
+    }
+
+    .voucher-drop-zone {
+        border: 1px dashed #dee2e6;
+        border-radius: 4px;
+        padding: 20px;
+        text-align: center;
+        cursor: pointer;
+    }
+
+    .voucher-drop-zone:hover {
+        border-color: #0d6efd;
+    }
+
+    .voucher-thumbnails {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .voucher-thumbnail {
+        position: relative;
+        width: 80px;
+        height: 80px;
+    }
+
+    .voucher-thumbnail img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        border-radius: 4px;
+    }
+
+    .voucher-thumbnail .remove-btn {
+        position: absolute;
+        top: -8px;
+        right: -8px;
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        border: none;
+        background: #dc3545;
+        color: white;
+        font-size: 12px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .contract-drop-zone {
+        border: 1px dashed #dc3545;
+        border-radius: 4px;
+        padding: 20px;
+        text-align: center;
+        cursor: pointer;
+        background-color: #fff5f5;
+    }
+
+    .contract-drop-zone:hover {
+        border-color: #b02a37;
+        background-color: #ffecec;
+    }
+
+    .contract-file-info {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .large-invoice-warning {
+        background-color: #fff3cd;
+        border-left: 4px solid #ffc107;
+        padding: 8px 12px;
+        margin-bottom: 12px;
+        border-radius: 4px;
+    }
+
+    /* Manual Entry Form Styles */
+    .manual-form {
+        max-width: 100%;
+    }
+
+    .manual-form .form-label {
+        font-weight: 500;
+        color: #495057;
+        margin-bottom: 0.5rem;
+    }
+
+    .manual-form .text-danger {
+        color: #dc3545;
+    }
+
+    .manual-form .form-control:focus,
+    .manual-form .form-select:focus {
+        border-color: #0d6efd;
+        box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+    }
+
+    .manual-form .invalid-feedback {
+        display: none;
+        color: #dc3545;
+        font-size: 0.875rem;
+        margin-top: 0.25rem;
+    }
+
+    .manual-form .form-control.is-invalid~.invalid-feedback,
+    .manual-form .form-select.is-invalid~.invalid-feedback {
+        display: block;
+    }
+
+    .manual-form .form-control.is-invalid,
+    .manual-form .form-select.is-invalid {
+        border-color: #dc3545;
+    }
+
+    .manual-form .form-actions {
+        margin-top: 1.5rem;
+        padding-top: 1.5rem;
+        border-top: 1px solid #dee2e6;
+    }
+
+    .voucher-preview {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+    }
+
+    .voucher-preview-item {
+        position: relative;
+        width: 100px;
+        height: 100px;
+        border: 1px solid #dee2e6;
+        border-radius: 4px;
+        overflow: hidden;
+    }
+
+    .voucher-preview-item img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+
+    .voucher-preview-item .remove-preview-btn {
+        position: absolute;
+        top: 4px;
+        right: 4px;
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        border: none;
+        background: rgba(220, 53, 69, 0.9);
+        color: white;
+        font-size: 14px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+    }
+
+    .voucher-preview-item .remove-preview-btn:hover {
+        background: #dc3545;
+    }
+</style>
+{% endblock %}

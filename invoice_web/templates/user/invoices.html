@@ -1,0 +1,271 @@
+{% extends "user/base_user.html" %}
+
+{% block title %}我的发票{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <!-- Header with Stats -->
+        <div class="card shadow-sm mb-4">
+            <div class="card-body">
+                <div class="row align-items-center">
+                    <div class="col-md-6">
+                        <h4 class="mb-0">
+                            <i class="bi bi-list-ul text-primary me-2"></i>我的发票
+                        </h4>
+                    </div>
+                    <div class="col-md-6 text-md-end mt-3 mt-md-0">
+                        <div class="d-inline-flex align-items-center me-4">
+                            <div class="bg-primary bg-opacity-10 rounded-circle p-2 me-2">
+                                <i class="bi bi-receipt text-primary"></i>
+                            </div>
+                            <div>
+                                <small class="text-muted d-block">记录总数</small>
+                                <strong id="total-count">0</strong> 张
+                            </div>
+                        </div>
+                        <div class="d-inline-flex align-items-center">
+                            <div class="bg-success bg-opacity-10 rounded-circle p-2 me-2">
+                                <i class="bi bi-currency-yen text-success"></i>
+                            </div>
+                            <div>
+                                <small class="text-muted d-block">总金额</small>
+                                <strong class="text-success" id="total-amount">¥0.00</strong>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Categorized Statistics -->
+                <div class="row mt-3 pt-3 border-top">
+                    <div class="col-md-6">
+                        <div class="d-flex align-items-center">
+                            <div class="bg-primary bg-opacity-10 rounded p-2 me-3">
+                                <i class="bi bi-file-earmark-pdf text-primary fs-4"></i>
+                            </div>
+                            <div class="flex-grow-1">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <span class="text-muted">有发票记录</span>
+                                    <span class="badge bg-primary" id="invoice-count">0</span>
+                                </div>
+                                <div class="d-flex justify-content-between align-items-center mt-1">
+                                    <small class="text-muted">金额</small>
+                                    <strong class="text-primary" id="invoice-amount">¥0.00</strong>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="d-flex align-items-center">
+                            <div class="bg-secondary bg-opacity-10 rounded p-2 me-3">
+                                <i class="bi bi-pencil-square text-secondary fs-4"></i>
+                            </div>
+                            <div class="flex-grow-1">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <span class="text-muted">无发票记录</span>
+                                    <span class="badge bg-secondary" id="manual-count">0</span>
+                                </div>
+                                <div class="d-flex justify-content-between align-items-center mt-1">
+                                    <small class="text-muted">金额</small>
+                                    <strong class="text-secondary" id="manual-amount">¥0.00</strong>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tabs -->
+        <ul class="nav nav-tabs mb-3" id="invoiceTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="all-tab" data-bs-toggle="tab" data-bs-target="#all-pane"
+                    type="button" role="tab" data-status="">
+                    <i class="bi bi-list-ul me-1"></i>全部 <span class="badge bg-secondary ms-1" id="all-count">0</span>
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="pending-tab" data-bs-toggle="tab" data-bs-target="#all-pane" type="button"
+                    role="tab" data-status="未报销">
+                    <i class="bi bi-clock me-1"></i>未报销 <span class="badge bg-warning text-dark ms-1"
+                        id="pending-count">0</span>
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="reimbursed-tab" data-bs-toggle="tab" data-bs-target="#all-pane"
+                    type="button" role="tab" data-status="已报销">
+                    <i class="bi bi-check-circle me-1"></i>已报销 <span class="badge bg-success ms-1"
+                        id="reimbursed-count">0</span>
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="draft-tab" data-bs-toggle="tab" data-bs-target="#draft-pane" type="button"
+                    role="tab">
+                    <i class="bi bi-hourglass me-1"></i>暂存 <span class="badge bg-info ms-1"
+                        id="draft-count-tab">0</span>
+                </button>
+            </li>
+        </ul>
+
+        <div class="tab-content" id="invoiceTabContent">
+            <!-- All/Filtered Invoices Tab -->
+            <div class="tab-pane fade show active" id="all-pane" role="tabpanel">
+                <!-- Filter Controls -->
+                <div class="card shadow-sm mb-3">
+                    <div class="card-body py-2">
+                        <div class="row align-items-center">
+                            <div class="col-auto">
+                                <label class="form-label mb-0 me-2">
+                                    <i class="bi bi-funnel me-1"></i>记录类型：
+                                </label>
+                            </div>
+                            <div class="col-auto">
+                                <div class="btn-group" role="group" aria-label="记录类型过滤">
+                                    <input type="radio" class="btn-check" name="recordTypeFilter" id="filter-all"
+                                        value="" autocomplete="off" checked>
+                                    <label class="btn btn-outline-secondary btn-sm" for="filter-all">
+                                        <i class="bi bi-list-ul me-1"></i>全部
+                                    </label>
+
+                                    <input type="radio" class="btn-check" name="recordTypeFilter" id="filter-invoice"
+                                        value="invoice" autocomplete="off">
+                                    <label class="btn btn-outline-primary btn-sm" for="filter-invoice">
+                                        <i class="bi bi-file-earmark-pdf me-1"></i>有发票
+                                    </label>
+
+                                    <input type="radio" class="btn-check" name="recordTypeFilter" id="filter-manual"
+                                        value="manual" autocomplete="off">
+                                    <label class="btn btn-outline-secondary btn-sm" for="filter-manual">
+                                        <i class="bi bi-pencil-square me-1"></i>无票报销
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Loading -->
+                <div id="loading" class="text-center py-5">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">加载中...</span>
+                    </div>
+                    <p class="mt-3 text-muted">加载中...</p>
+                </div>
+
+                <!-- Invoice Table -->
+                <div class="card shadow-sm d-none" id="invoice-table-card">
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>发票号码</th>
+                                    <th>开票日期</th>
+                                    <th>项目名称</th>
+                                    <th class="text-end">金额</th>
+                                    <th>上传时间</th>
+                                    <th class="text-center">记录类型</th>
+                                    <th class="text-center">报销状态</th>
+                                    <th class="text-center">凭证</th>
+                                </tr>
+                            </thead>
+                            <tbody id="invoice-tbody">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Empty State -->
+                <div class="text-center py-5 d-none" id="empty-state">
+                    <i class="bi bi-inbox display-1 text-muted"></i>
+                    <h5 class="mt-3 text-muted">暂无发票记录</h5>
+                    <p class="text-muted">您还没有上传任何发票</p>
+                    <a href="{{ url_for('user.upload') }}" class="btn btn-primary">
+                        <i class="bi bi-upload me-1"></i>上传第一张发票
+                    </a>
+                </div>
+
+                <!-- Error State -->
+                <div class="text-center py-5 d-none" id="error-state">
+                    <i class="bi bi-exclamation-circle display-1 text-danger"></i>
+                    <h5 class="mt-3 text-muted">加载失败</h5>
+                    <p class="text-muted">请刷新页面重试</p>
+                    <button class="btn btn-outline-primary" onclick="location.reload()">
+                        <i class="bi bi-arrow-clockwise me-1"></i>刷新页面
+                    </button>
+                </div>
+            </div>
+
+            <!-- Draft Invoices Tab -->
+            <div class="tab-pane fade" id="draft-pane" role="tabpanel">
+                <div class="card shadow-sm" id="draft-list-card-invoices">
+                    <div class="card-header bg-warning bg-opacity-25">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <span><i class="bi bi-hourglass me-2"></i>暂存发票（刷新后需重新上传PDF文件）</span>
+                            <div>
+                                <button class="btn btn-sm btn-outline-danger" id="clear-drafts-btn">
+                                    <i class="bi bi-trash me-1"></i>清空
+                                </button>
+                                <a href="{{ url_for('user.upload') }}" class="btn btn-sm btn-primary ms-2">
+                                    <i class="bi bi-upload me-1"></i>去上传页面提交
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>发票号码</th>
+                                    <th>开票日期</th>
+                                    <th>项目名称</th>
+                                    <th class="text-end">金额</th>
+                                    <th>报销人</th>
+                                    <th class="text-center">状态</th>
+                                    <th class="text-center">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="draft-tbody">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="text-center py-5 d-none" id="draft-empty-state">
+                    <i class="bi bi-inbox display-1 text-muted"></i>
+                    <h5 class="mt-3 text-muted">暂无暂存发票</h5>
+                    <p class="text-muted">暂存的发票会显示在这里</p>
+                    <a href="{{ url_for('user.upload') }}" class="btn btn-primary">
+                        <i class="bi bi-upload me-1"></i>去上传发票
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* Record Type Badges */
+    .badge-invoice {
+        background-color: #0d6efd;
+        color: white;
+        font-size: 0.75rem;
+        padding: 0.35rem 0.65rem;
+        border-radius: 0.25rem;
+        font-weight: 500;
+    }
+
+    .badge-manual {
+        background-color: #6c757d;
+        color: white;
+        font-size: 0.75rem;
+        padding: 0.35rem 0.65rem;
+        border-radius: 0.25rem;
+        font-weight: 500;
+    }
+
+    .badge-invoice i,
+    .badge-manual i {
+        font-size: 0.875rem;
+    }
+</style>
+{% endblock %}

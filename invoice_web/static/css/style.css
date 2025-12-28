@@ -1,0 +1,898 @@
+/* 
+ * Invoice Web Application - Custom Styles
+ * Clean, minimalist design with consistent color scheme
+ * Requirements: 1.3, 1.4
+ */
+
+/* ============================================
+   CSS Variables - Color Scheme
+   ============================================ */
+:root {
+    --primary-color: #0d6efd;
+    --primary-light: #e7f1ff;
+    --success-color: #198754;
+    --success-light: #d1e7dd;
+    --warning-color: #ffc107;
+    --warning-light: #fff3cd;
+    --danger-color: #dc3545;
+    --danger-light: #f8d7da;
+    --text-primary: #212529;
+    --text-secondary: #6c757d;
+    --text-muted: #adb5bd;
+    --bg-light: #f8f9fa;
+    --bg-white: #ffffff;
+    --border-color: #dee2e6;
+    --shadow-sm: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+    --shadow-md: 0 0.5rem 1rem rgba(0, 0, 0, 0.1);
+    --transition-fast: 0.15s ease-in-out;
+    --transition-normal: 0.3s ease-in-out;
+}
+
+/* ============================================
+   Base Styles
+   ============================================ */
+body {
+    background-color: var(--bg-light);
+    color: var(--text-primary);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    line-height: 1.6;
+}
+
+/* ============================================
+   Navigation
+   ============================================ */
+.navbar {
+    transition: box-shadow var(--transition-normal);
+}
+
+.navbar-brand {
+    font-size: 1.1rem;
+    letter-spacing: 0.02em;
+}
+
+.navbar-brand i {
+    font-size: 1.3rem;
+}
+
+.nav-link {
+    transition: color var(--transition-fast);
+}
+
+.nav-link:hover {
+    color: var(--primary-color) !important;
+}
+
+/* ============================================
+   Cards
+   ============================================ */
+.card {
+    border: none;
+    border-radius: 0.5rem;
+    transition: box-shadow var(--transition-normal);
+}
+
+.card:hover {
+    box-shadow: var(--shadow-md);
+}
+
+.card-header {
+    border-bottom: 1px solid var(--border-color);
+    background-color: var(--bg-white);
+}
+
+/* ============================================
+   Summary Statistics Panel
+   ============================================ */
+.bg-primary.bg-opacity-10,
+.bg-success.bg-opacity-10 {
+    transition: transform var(--transition-fast);
+}
+
+.bg-primary.bg-opacity-10:hover,
+.bg-success.bg-opacity-10:hover {
+    transform: scale(1.05);
+}
+
+#totalCount,
+#totalAmount {
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+#totalAmount {
+    color: var(--success-color);
+}
+
+/* ============================================
+   Buttons
+   ============================================ */
+.btn {
+    border-radius: 0.375rem;
+    font-weight: 500;
+    transition: all var(--transition-fast);
+}
+
+.btn-primary {
+    box-shadow: 0 2px 4px rgba(13, 110, 253, 0.2);
+}
+
+.btn-primary:hover {
+    box-shadow: 0 4px 8px rgba(13, 110, 253, 0.3);
+    transform: translateY(-1px);
+}
+
+.btn-outline-success:hover {
+    box-shadow: 0 4px 8px rgba(25, 135, 84, 0.2);
+}
+
+.btn-danger {
+    box-shadow: 0 2px 4px rgba(220, 53, 69, 0.2);
+}
+
+.btn-danger:hover {
+    box-shadow: 0 4px 8px rgba(220, 53, 69, 0.3);
+}
+
+/* ============================================
+   Search Input & Filter Area
+   ============================================ */
+.input-group {
+    box-shadow: var(--shadow-sm);
+    border-radius: 0.5rem;
+    overflow: hidden;
+}
+
+.input-group .form-control {
+    border-left: none;
+}
+
+.input-group .form-control:focus {
+    box-shadow: none;
+    border-color: var(--border-color);
+}
+
+.input-group-text {
+    border-right: none;
+}
+
+#searchInput::placeholder {
+    color: var(--text-muted);
+    font-size: 0.9rem;
+}
+
+#clearSearchBtn {
+    border-left: none;
+}
+
+/* Search box styling */
+.search-box .input-group,
+.date-filter .input-group,
+.person-filter .input-group {
+    box-shadow: none;
+    border: 1px solid var(--border-color);
+    border-radius: 0.5rem;
+    transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.search-box .input-group:focus-within,
+.date-filter .input-group:focus-within,
+.person-filter .input-group:focus-within {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(13, 110, 253, 0.1);
+}
+
+.search-box .input-group-text,
+.date-filter .input-group-text,
+.person-filter .input-group-text {
+    background-color: #f8f9fa;
+    border: none;
+}
+
+.search-box .form-control,
+.date-filter .form-control,
+.person-filter .form-select {
+    border: none;
+    background-color: #f8f9fa;
+}
+
+.search-box .form-control:focus,
+.date-filter .form-control:focus,
+.person-filter .form-select:focus {
+    background-color: #fff;
+    box-shadow: none;
+}
+
+.search-box .btn,
+.date-filter .btn,
+.person-filter .btn {
+    border: none;
+    border-radius: 0;
+}
+
+/* Filter buttons styling */
+.date-filter .btn-primary {
+    background-color: var(--primary-color);
+    border-radius: 0 0.5rem 0.5rem 0 !important;
+}
+
+.date-filter .btn-outline-secondary,
+.person-filter .btn-outline-secondary,
+.search-box .btn-light {
+    background-color: transparent;
+}
+
+.date-filter .btn-outline-secondary:hover,
+.person-filter .btn-outline-secondary:hover {
+    background-color: var(--bg-light);
+}
+
+/* Form select in filter */
+.person-filter .form-select {
+    padding-right: 2rem;
+    background-position: right 0.5rem center;
+}
+
+/* ============================================
+   Invoice Table
+   ============================================ */
+.table {
+    margin-bottom: 0;
+}
+
+.table thead th {
+    font-weight: 600;
+    font-size: 0.875rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--text-secondary);
+    border-bottom: 2px solid var(--border-color);
+    padding: 1rem 0.75rem;
+    white-space: nowrap;
+}
+
+.table tbody td {
+    padding: 0.875rem 0.75rem;
+    vertical-align: middle;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.table tbody tr {
+    transition: background-color var(--transition-fast);
+}
+
+.table-hover tbody tr:hover {
+    background-color: var(--primary-light);
+}
+
+/* Sortable columns */
+.sortable {
+    cursor: pointer;
+    user-select: none;
+    position: relative;
+}
+
+.sortable:hover {
+    background-color: var(--bg-light);
+}
+
+.sort-icon {
+    font-size: 0.75rem;
+    opacity: 0.4;
+    margin-left: 0.25rem;
+    transition: opacity var(--transition-fast);
+}
+
+.sortable:hover .sort-icon {
+    opacity: 0.7;
+}
+
+.sortable.sort-asc .sort-icon,
+.sortable.sort-desc .sort-icon {
+    opacity: 1;
+    color: var(--primary-color);
+}
+
+.sortable.sort-asc .sort-icon::before {
+    content: "\F128";
+    /* bi-arrow-up */
+}
+
+.sortable.sort-desc .sort-icon::before {
+    content: "\F127";
+    /* bi-arrow-down */
+}
+
+/* Amount column styling */
+.table tbody td.amount-cell {
+    font-weight: 600;
+    color: var(--success-color);
+    font-family: "SF Mono", "Monaco", "Inconsolata", monospace;
+}
+
+/* Action buttons in table */
+.table .btn-sm {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.8rem;
+}
+
+.table .btn-outline-primary {
+    border-color: var(--primary-color);
+}
+
+.table .btn-outline-danger {
+    border-color: var(--danger-color);
+}
+
+/* ============================================
+   Empty State
+   ============================================ */
+#emptyState {
+    padding: 3rem 1rem;
+}
+
+#emptyState i {
+    color: var(--text-muted);
+}
+
+#emptyState p {
+    font-size: 1.1rem;
+}
+
+/* ============================================
+   Modals
+   ============================================ */
+.modal-content {
+    border: none;
+    border-radius: 0.5rem;
+    box-shadow: var(--shadow-md);
+}
+
+.modal-header {
+    border-bottom: 1px solid var(--border-color);
+    padding: 1rem 1.5rem;
+}
+
+.modal-body {
+    padding: 1.5rem;
+}
+
+.modal-footer {
+    border-top: 1px solid var(--border-color);
+    padding: 1rem 1.5rem;
+}
+
+/* Detail Modal */
+#detailModal .form-label {
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.25rem;
+}
+
+#detailModal p.fw-semibold {
+    font-size: 1rem;
+    margin-bottom: 0;
+}
+
+/* Delete Modal */
+#deleteModal .modal-header {
+    border-radius: 0.5rem 0.5rem 0 0;
+}
+
+#deleteModal .alert-light {
+    background-color: var(--bg-light);
+    border: 1px solid var(--border-color);
+}
+
+/* Duplicate Modal */
+#duplicateModal .card {
+    height: 100%;
+}
+
+#duplicateModal .card-header {
+    font-size: 0.9rem;
+}
+
+#duplicateModal .card-body p {
+    margin-bottom: 0.5rem;
+    font-size: 0.9rem;
+}
+
+#duplicateModal .card-body p:last-child {
+    margin-bottom: 0;
+}
+
+/* Upload Progress Modal */
+#uploadProgressModal .progress {
+    height: 0.5rem;
+    border-radius: 0.25rem;
+}
+
+#uploadProgressModal .progress-bar {
+    background-color: var(--primary-color);
+}
+
+/* ============================================
+   Toast Notifications
+   ============================================ */
+.toast-container {
+    z-index: 1100;
+}
+
+.toast {
+    border: none;
+    border-radius: 0.5rem;
+    box-shadow: var(--shadow-md);
+}
+
+.toast.bg-success {
+    background-color: var(--success-color) !important;
+}
+
+.toast.bg-danger {
+    background-color: var(--danger-color) !important;
+}
+
+.toast.bg-warning {
+    background-color: var(--warning-color) !important;
+}
+
+/* ============================================
+   Utility Classes
+   ============================================ */
+.text-truncate-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.cursor-pointer {
+    cursor: pointer;
+}
+
+/* ============================================
+   Loading Spinner
+   ============================================ */
+.loading-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(255, 255, 255, 0.8);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1050;
+}
+
+.spinner-border {
+    width: 3rem;
+    height: 3rem;
+}
+
+/* ============================================
+   Responsive Adjustments
+   ============================================ */
+
+/* Large screens (desktops) */
+@media (min-width: 992px) {
+    .container-fluid {
+        padding-left: 2rem;
+        padding-right: 2rem;
+    }
+}
+
+/* Medium screens (tablets) */
+@media (max-width: 991.98px) {
+    .card-body .row>.col-md-4 {
+        margin-bottom: 1rem;
+    }
+
+    .card-body .row>.col-md-4:last-child {
+        margin-bottom: 0;
+    }
+
+    #totalCount,
+    #totalAmount {
+        font-size: 1.5rem;
+    }
+}
+
+/* Small screens (phones) */
+@media (max-width: 767.98px) {
+
+    /* Navigation */
+    .navbar-brand span {
+        font-size: 0.95rem;
+    }
+
+    /* Summary panel */
+    .card-body .row>.col-md-4 {
+        text-align: center;
+    }
+
+    .card-body .d-flex {
+        justify-content: center;
+    }
+
+    .card-body .text-md-end {
+        text-align: center !important;
+    }
+
+    .card-body .text-md-end .btn {
+        width: 100%;
+        margin-bottom: 0.5rem;
+    }
+
+    .card-body .text-md-end .btn:last-child {
+        margin-bottom: 0;
+    }
+
+    /* Search */
+    .card-header .row>.col-md-6:first-child {
+        margin-bottom: 1rem;
+    }
+
+    #searchInput {
+        font-size: 16px;
+        /* Prevents zoom on iOS */
+    }
+
+    /* Table */
+    .table thead th {
+        font-size: 0.75rem;
+        padding: 0.75rem 0.5rem;
+    }
+
+    .table tbody td {
+        font-size: 0.875rem;
+        padding: 0.75rem 0.5rem;
+    }
+
+    .table .btn-sm {
+        padding: 0.2rem 0.4rem;
+        font-size: 0.75rem;
+    }
+
+    /* Hide less important columns on mobile */
+    .table th:nth-child(5),
+    .table td:nth-child(5) {
+        display: none;
+        /* Hide remark column */
+    }
+
+    /* Modals */
+    .modal-dialog {
+        margin: 0.5rem;
+    }
+
+    .modal-lg {
+        max-width: calc(100% - 1rem);
+    }
+
+    /* Duplicate modal cards stack vertically */
+    #duplicateModal .col-md-6 {
+        margin-bottom: 1rem;
+    }
+
+    #duplicateModal .col-md-6:last-child {
+        margin-bottom: 0;
+    }
+}
+
+/* Extra small screens */
+@media (max-width: 575.98px) {
+    main.container-fluid {
+        padding-left: 0.75rem;
+        padding-right: 0.75rem;
+    }
+
+    .card-body {
+        padding: 1rem;
+    }
+
+    /* Stack statistics vertically */
+    .bg-primary.bg-opacity-10,
+    .bg-success.bg-opacity-10 {
+        padding: 0.75rem !important;
+    }
+
+    #totalCount,
+    #totalAmount {
+        font-size: 1.25rem;
+    }
+
+    /* Hide date column on very small screens */
+    .table th:nth-child(2),
+    .table td:nth-child(2) {
+        display: none;
+    }
+
+    /* Action buttons stack */
+    .table td:last-child {
+        white-space: nowrap;
+    }
+
+    .table td:last-child .btn {
+        display: block;
+        width: 100%;
+        margin-bottom: 0.25rem;
+    }
+
+    .table td:last-child .btn:last-child {
+        margin-bottom: 0;
+    }
+}
+
+/* ============================================
+   Print Styles
+   ============================================ */
+@media print {
+
+    .navbar,
+    .btn,
+    .input-group,
+    .modal,
+    .toast-container {
+        display: none !important;
+    }
+
+    .card {
+        box-shadow: none !important;
+        border: 1px solid var(--border-color) !important;
+    }
+
+    .table th,
+    .table td {
+        border: 1px solid var(--border-color) !important;
+    }
+
+    body {
+        background-color: white !important;
+    }
+}
+
+/* ============================================
+   Animations
+   ============================================ */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.fade-in {
+    animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes pulse {
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.5;
+    }
+}
+
+.pulse {
+    animation: pulse 1.5s ease-in-out infinite;
+}
+
+/* Row highlight animation for newly added items */
+@keyframes highlightRow {
+    0% {
+        background-color: var(--success-light);
+    }
+
+    100% {
+        background-color: transparent;
+    }
+}
+
+.highlight-new {
+    animation: highlightRow 2s ease-out;
+}
+
+
+/* ============================================
+   Voucher Badge Styles
+   ============================================ */
+.voucher-badge {
+    font-size: 0.75rem;
+    min-width: 1.5rem;
+    padding: 0.25rem 0.5rem;
+}
+
+.voucher-preview-item {
+    display: inline-block;
+}
+
+.voucher-preview-img {
+    border: 1px solid var(--border-color);
+    transition: transform var(--transition-fast);
+}
+
+.voucher-preview-img:hover {
+    transform: scale(1.1);
+}
+
+/* Upload Invoice Modal */
+#uploadInvoiceModal .form-text {
+    font-size: 0.8rem;
+}
+
+#voucherPreviewContainer {
+    min-height: 20px;
+}
+
+
+/* ============================================
+   Voucher Gallery Styles
+   ============================================ */
+.voucher-gallery {
+    min-height: 80px;
+}
+
+.voucher-thumbnail-wrapper {
+    display: inline-block;
+}
+
+.voucher-thumbnail {
+    width: 80px;
+    height: 80px;
+    object-fit: cover;
+    border: 2px solid var(--border-color);
+    transition: all var(--transition-fast);
+}
+
+.voucher-thumbnail:hover {
+    border-color: var(--primary-color);
+    transform: scale(1.05);
+}
+
+.voucher-delete-btn {
+    opacity: 0;
+    transition: opacity var(--transition-fast);
+    padding: 0.1rem 0.3rem;
+    font-size: 0.7rem;
+    border-radius: 50%;
+    transform: translate(25%, -25%);
+}
+
+.voucher-thumbnail-wrapper:hover .voucher-delete-btn {
+    opacity: 1;
+}
+
+/* ============================================
+   Voucher Lightbox Styles
+   ============================================ */
+#voucherLightboxModal .modal-content {
+    background-color: rgba(0, 0, 0, 0.95);
+}
+
+.voucher-image-container {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    overflow: hidden;
+}
+
+.voucher-lightbox-img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    transition: transform 0.1s ease-out;
+    user-select: none;
+    -webkit-user-drag: none;
+}
+
+.voucher-nav-btn {
+    opacity: 0.7;
+    border-radius: 50%;
+    width: 50px;
+    height: 50px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: opacity var(--transition-fast);
+}
+
+.voucher-nav-btn:hover {
+    opacity: 1;
+}
+
+/* Voucher section in detail modal */
+.voucher-section {
+    background-color: var(--bg-light);
+    border-radius: 0.5rem;
+    padding: 1rem;
+}
+
+
+/* ============================================
+   Status Tabs Styles
+   ============================================ */
+#statusTabs {
+    border-bottom: none;
+    background-color: var(--bg-light);
+    padding-bottom: 0;
+}
+
+#statusTabs .nav-link {
+    border: none;
+    border-bottom: 3px solid transparent;
+    border-radius: 0;
+    color: var(--text-secondary);
+    font-weight: 500;
+    padding: 0.75rem 1.25rem;
+    transition: all var(--transition-fast);
+}
+
+#statusTabs .nav-link:hover {
+    color: var(--primary-color);
+    background-color: rgba(13, 110, 253, 0.05);
+}
+
+#statusTabs .nav-link.active {
+    color: var(--primary-color);
+    background-color: var(--bg-white);
+    border-bottom-color: var(--primary-color);
+}
+
+#statusTabs .nav-link .badge {
+    font-size: 0.7rem;
+    vertical-align: middle;
+}
+
+/* ============================================
+   Signature Overlay Styles
+   ============================================ */
+#signatureOverlay {
+    transition: none;
+    /* Disable transition for smooth dragging */
+}
+
+#signatureOverlay img {
+    background: transparent;
+}
+
+#signaturePdfContainer {
+    background-color: #525659;
+}
+
+/* ============================================
+   Record Type Badges (Requirements: 13.1, 13.2, 13.3)
+   ============================================ */
+.badge-invoice {
+    background-color: #0d6efd;
+    color: white;
+    font-size: 0.75rem;
+    padding: 0.35em 0.65em;
+    font-weight: 500;
+}
+
+.badge-manual {
+    background-color: #6c757d;
+    color: white;
+    font-size: 0.75rem;
+    padding: 0.35em 0.65em;
+    font-weight: 500;
+}
+
+.badge-invoice i,
+.badge-manual i {
+    font-size: 0.875rem;
+}

@@ -1,0 +1,226 @@
+{% extends "user/base_user.html" %}
+
+{% block title %}发票详情{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-10 mx-auto">
+        <!-- Back Button -->
+        <a href="{{ url_for('user.invoices') }}" class="btn btn-outline-secondary mb-4">
+            <i class="bi bi-arrow-left me-1"></i>返回列表
+        </a>
+
+        <!-- Loading -->
+        <div id="loading" class="text-center py-5">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">加载中...</span>
+            </div>
+            <p class="mt-3 text-muted">加载中...</p>
+        </div>
+
+        <!-- Invoice Detail -->
+        <div class="d-none" id="detail-content">
+            <!-- Invoice Info Card -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">
+                        <i class="bi bi-receipt text-primary me-2"></i>
+                        <span id="detail-card-title">发票信息</span>
+                    </h5>
+                    <div>
+                        <!-- PDF Preview Button (only for invoice records) -->
+                        <button class="btn btn-sm btn-outline-primary me-2" id="preview-pdf-btn">
+                            <i class="bi bi-file-earmark-pdf me-1"></i>预览PDF
+                        </button>
+                        <!-- Edit Button (only for manual records) -->
+                        <button class="btn btn-sm btn-outline-warning d-none" id="edit-manual-btn">
+                            <i class="bi bi-pencil me-1"></i>编辑
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <!-- Manual Record Notice -->
+                    <div class="alert alert-info d-none mb-3" id="manual-record-notice">
+                        <i class="bi bi-info-circle me-2"></i>
+                        <strong>此记录无发票</strong> - 这是一条无票报销记录
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label text-muted small">发票号码/记录号</label>
+                            <p class="fw-bold mb-0" id="detail-number">-</p>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label text-muted small">开票日期</label>
+                            <p class="fw-bold mb-0" id="detail-date">-</p>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label text-muted small">项目名称</label>
+                            <p class="fw-bold mb-0" id="detail-item">-</p>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label text-muted small">金额</label>
+                            <p class="fw-bold text-success fs-5 mb-0" id="detail-amount">-</p>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label text-muted small">报销人</label>
+                            <p class="mb-0" id="detail-person">-</p>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label text-muted small">报销状态</label>
+                            <p class="mb-0" id="detail-status">-</p>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label text-muted small">上传时间</label>
+                            <p class="mb-0" id="detail-time">-</p>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label text-muted small">备注</label>
+                            <p class="mb-0" id="detail-remark">-</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Vouchers Card -->
+            <div class="card shadow-sm">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0">
+                        <i class="bi bi-images text-primary me-2"></i>支出凭证
+                        <span class="badge bg-secondary ms-2" id="voucher-count">0</span>
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="voucher-gallery" id="voucher-gallery">
+                        <!-- Voucher thumbnails will be rendered here -->
+                    </div>
+                    <p class="text-muted text-center py-4 d-none" id="no-vouchers">
+                        <i class="bi bi-image display-4 d-block mb-2"></i>
+                        暂无支出凭证
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Error State -->
+        <div class="text-center py-5 d-none" id="error-state">
+            <i class="bi bi-exclamation-circle display-1 text-danger"></i>
+            <h5 class="mt-3 text-muted" id="error-message">发票不存在</h5>
+            <a href="{{ url_for('user.invoices') }}" class="btn btn-outline-primary mt-3">
+                <i class="bi bi-arrow-left me-1"></i>返回列表
+            </a>
+        </div>
+    </div>
+</div>
+
+<!-- PDF Preview Modal -->
+<div class="modal fade" id="pdfModal" tabindex="-1" aria-labelledby="pdfModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
+        <div class="modal-content" style="height: 90vh;">
+            <div class="modal-header">
+                <h5 class="modal-title" id="pdfModalLabel">
+                    <i class="bi bi-file-earmark-pdf me-2"></i>PDF预览
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-0">
+                <iframe id="pdf-iframe" src="" style="width: 100%; height: 100%; border: none;"></iframe>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Voucher Lightbox Modal -->
+<div class="modal fade" id="voucherModal" tabindex="-1" aria-labelledby="voucherModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content bg-dark">
+            <div class="modal-header border-0">
+                <h6 class="modal-title text-white" id="voucherModalLabel">
+                    <i class="bi bi-image me-2"></i>凭证预览
+                    <span id="voucher-index" class="ms-2 text-muted"></span>
+                </h6>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"
+                    aria-label="Close"></button>
+            </div>
+            <div class="modal-body text-center p-0 position-relative" style="min-height: 400px;">
+                <img id="voucher-preview-img" src="" class="img-fluid" alt="凭证预览" style="max-height: 70vh;">
+                <!-- Navigation buttons -->
+                <button type="button"
+                    class="btn btn-dark position-absolute start-0 top-50 translate-middle-y ms-2 voucher-nav-btn"
+                    id="prev-voucher-btn">
+                    <i class="bi bi-chevron-left fs-4"></i>
+                </button>
+                <button type="button"
+                    class="btn btn-dark position-absolute end-0 top-50 translate-middle-y me-2 voucher-nav-btn"
+                    id="next-voucher-btn">
+                    <i class="bi bi-chevron-right fs-4"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Manual Record Modal -->
+<div class="modal fade" id="editManualModal" tabindex="-1" aria-labelledby="editManualModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="editManualModalLabel">
+                    <i class="bi bi-pencil me-2"></i>编辑手动记录
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="edit-manual-form">
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="edit-item-name" class="form-label">费用项目名称 <span
+                                    class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="edit-item-name" required>
+                            <div class="invalid-feedback" id="edit-item-name-error"></div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="edit-amount" class="form-label">金额 <span class="text-danger">*</span></label>
+                            <div class="input-group">
+                                <span class="input-group-text">¥</span>
+                                <input type="number" class="form-control" id="edit-amount" step="0.01" min="0.01"
+                                    required>
+                            </div>
+                            <div class="invalid-feedback" id="edit-amount-error"></div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="edit-invoice-date" class="form-label">日期 <span
+                                    class="text-danger">*</span></label>
+                            <input type="date" class="form-control" id="edit-invoice-date" required>
+                            <div class="invalid-feedback" id="edit-invoice-date-error"></div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="edit-reimbursement-person" class="form-label">报销人</label>
+                            <select class="form-select" id="edit-reimbursement-person">
+                                <option value="">请选择</option>
+                            </select>
+                        </div>
+                        <div class="col-12 mb-3">
+                            <label for="edit-remark" class="form-label">备注</label>
+                            <textarea class="form-control" id="edit-remark" rows="3"></textarea>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-check-lg me-1"></i>保存
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+{% block extra_js %}
+<script>
+    // Pass invoice number to JavaScript
+    window.invoiceNumber = "{{ invoice_number }}";
+</script>
+{% endblock %}
+{% endblock %}

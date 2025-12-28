@@ -1,0 +1,41 @@
+{% extends "user/base_user.html" %}
+
+{% block title %}登录{% endblock %}
+
+{% block content %}
+<div class="login-container">
+    <div class="login-card">
+        <div class="text-center mb-4">
+            <i class="bi bi-receipt text-primary" style="font-size: 3rem;"></i>
+            <h4 class="mt-2">电子发票汇总系统</h4>
+            <p class="text-muted">用户端登录</p>
+        </div>
+        <div id="login-error" class="alert alert-danger d-none" role="alert">
+            <i class="bi bi-exclamation-circle me-1"></i>
+            <span id="login-error-text"></span>
+        </div>
+        <form id="login-form">
+            <div class="mb-3">
+                <label for="username" class="form-label">
+                    <i class="bi bi-person me-1"></i>用户名
+                </label>
+                <input type="text" class="form-control" id="username" name="username" placeholder="请输入用户名" required
+                    autofocus>
+            </div>
+            <div class="mb-3">
+                <label for="password" class="form-label">
+                    <i class="bi bi-lock me-1"></i>密码
+                </label>
+                <input type="password" class="form-control" id="password" name="password" placeholder="请输入密码" required>
+            </div>
+            <button type="submit" class="btn btn-primary w-100" id="login-btn">
+                <span class="btn-text">
+                    <i class="bi bi-box-arrow-in-right me-1"></i>登录
+                </span>
+                <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                <span class="loading-text d-none">登录中...</span>
+            </button>
+        </form>
+    </div>
+</div>
+{% endblock %}
