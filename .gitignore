@@ -1,0 +1,55 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Yunzhi
+.yunzhi/
+
+# User uploaded data
+data/signatures/
+data/vouchers/
+data/contracts/
+invoice_web/data/signatures/
+invoice_web/data/vouchers/
+
+# Keep directory structure
+!data/.gitkeep
+!invoice_web/data/.gitkeep
+
+# Temporary files
+*.log
+*.tmp
+test_*.db
+test_output.txt
+TASK*_VERIFICATION_SUMMARY.md
+
+# PDF files (user documents)
+*.pdf
+
+# Environment
+.env
+venv/
+env/
