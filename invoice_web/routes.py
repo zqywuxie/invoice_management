@@ -3,6 +3,7 @@ API Routes Blueprint
 Web端电子发票汇总系统 - API路由模块
 """
 
+import json
 import os
 import tempfile
 from datetime import datetime, timedelta
@@ -121,7 +122,8 @@ def invoice_to_dict(invoice: Invoice, voucher_count: int = 0, reimbursement_pers
         'voucher_count': voucher_count,
         'reimbursement_person_id': invoice.reimbursement_person_id,
         'reimbursement_person_name': reimbursement_person_name or '',
-        'reimbursement_status': invoice.reimbursement_status or '未报销'
+        'reimbursement_status': invoice.reimbursement_status or '未报销',
+        'record_type': invoice.record_type or 'invoice'
     }
 
 
@@ -181,6 +183,55 @@ def auth_status():
     return jsonify({'logged_in': False})
 
 
+@api.route('/user/preferences/<string:pref_key>', methods=['GET'])
+@login_required
+def get_user_preference(pref_key):
+    """Get current user's preference by key."""
+    current_user = get_current_user()
+    username = current_user.get('username', '').strip()
+    if not username:
+        return jsonify({'success': False, 'message': '未登录用户'}), 401
+
+    value_text = get_data_store().get_user_preference(username, pref_key)
+    value = None
+    if value_text is not None:
+        try:
+            value = json.loads(value_text)
+        except (TypeError, ValueError):
+            value = value_text
+
+    return jsonify({
+        'success': True,
+        'key': pref_key,
+        'value': value
+    })
+
+
+@api.route('/user/preferences/<string:pref_key>', methods=['PUT'])
+@login_required
+def set_user_preference(pref_key):
+    """Save current user's preference by key."""
+    data = request.get_json() or {}
+    if 'value' not in data:
+        return jsonify({'success': False, 'message': '缺少 value 字段'}), 400
+
+    current_user = get_current_user()
+    username = current_user.get('username', '').strip()
+    if not username:
+        return jsonify({'success': False, 'message': '未登录用户'}), 401
+
+    try:
+        value_text = json.dumps(data.get('value'), ensure_ascii=False)
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'message': 'value 不是有效 JSON 数据'}), 400
+
+    if len(value_text) > 100_000:
+        return jsonify({'success': False, 'message': 'value 太大，超过限制'}), 400
+
+    get_data_store().set_user_preference(username, pref_key, value_text)
+    return jsonify({'success': True, 'message': '保存成功'})
+
+
 @api.route('/invoices', methods=['GET'])
 @login_required
 def get_invoices():
@@ -199,6 +250,55 @@ def get_invoices():
     Returns:
         JSON: {invoices: [...], total_count: int, total_amount: str}
     """
+    person_service = get_reimbursement_person_service()
+    data_store = get_data_store()
+    search = request.args.get('search', '').strip()
+    start_date = request.args.get('start_date', '').strip()
+    end_date = request.args.get('end_date', '').strip()
+    reimbursement_person_id = request.args.get('reimbursement_person_id', '').strip()
+    uploaded_by = request.args.get('uploaded_by', '').strip()
+    reimbursement_status = request.args.get('reimbursement_status', '').strip()
+    record_type = request.args.get('record_type', '').strip()
+    page = request.args.get('page', 1, type=int)
+    page_size = request.args.get('page_size', 20, type=int)
+
+    filters = {
+        'search': search,
+        'start_date': start_date,
+        'end_date': end_date,
+        'reimbursement_person_id': reimbursement_person_id,
+        'uploaded_by': uploaded_by,
+        'reimbursement_status': reimbursement_status,
+        'record_type': record_type
+    }
+    current_user = get_current_user()
+    if not current_user.get('is_admin', False):
+        filters['uploaded_by'] = current_user.get('display_name', '')
+
+    result = data_store.query_invoices(filters=filters, page=page, page_size=page_size)
+    all_persons = person_service.get_all_persons()
+    person_map = {p.id: p.name for p in all_persons}
+    invoice_dicts = []
+    for row in result['invoices']:
+        inv = row['invoice']
+        person_name = person_map.get(inv.reimbursement_person_id, '') if inv.reimbursement_person_id else ''
+        invoice_dicts.append(invoice_to_dict(inv, row['voucher_count'], person_name))
+
+    return jsonify({
+        'invoices': invoice_dicts,
+        'total_count': result['total_count'],
+        'total_amount': result['total_amount'],
+        'invoice_count': result['invoice_count'],
+        'manual_count': result['manual_count'],
+        'invoice_amount': result['invoice_amount'],
+        'manual_amount': result['manual_amount'],
+        'pending_count': result['pending_count'],
+        'completed_count': result['completed_count'],
+        'page': result['page'],
+        'page_size': result['page_size'],
+        'total_pages': result['total_pages']
+    })
+
     manager = get_invoice_manager()
     voucher_service = get_voucher_service()
     person_service = get_reimbursement_person_service()
@@ -555,11 +655,18 @@ def update_invoice(invoice_number):
         return jsonify({'success': False, 'message': f'数据格式错误: {str(e)}'})
 
 
-@api.route('/invoices/export', methods=['GET'])
+@api.route('/invoices/export', methods=['GET', 'POST'])
 @login_required
 def export_invoices():
     """
     导出发票到Excel
+    
+    GET: 导出所有发票
+    POST: 批量导出选中的发票
+    
+    POST JSON Body:
+        invoice_numbers: 发票号码列表 (可选)
+        indices: 发票序号列表 (可选，从0开始)
     
     Returns:
         Excel文件下载
@@ -568,7 +675,28 @@ def export_invoices():
         manager = get_invoice_manager()
         export_service = get_export_service()
         
-        invoices = manager.get_all_invoices()
+        all_invoices = manager.get_all_invoices()
+        
+        # 如果是POST请求，处理批量导出
+        if request.method == 'POST':
+            data = request.get_json()
+            
+            # 支持通过发票号码列表导出
+            if data and 'invoice_numbers' in data:
+                invoice_numbers = data['invoice_numbers']
+                invoices = [inv for inv in all_invoices if inv.invoice_number in invoice_numbers]
+            # 支持通过序号列表导出
+            elif data and 'indices' in data:
+                indices = data['indices']
+                invoices = [all_invoices[i] for i in indices if 0 <= i < len(all_invoices)]
+            else:
+                invoices = all_invoices
+        else:
+            # GET请求导出所有发票
+            invoices = all_invoices
+        
+        if not invoices:
+            return jsonify({'success': False, 'message': '没有可导出的发票'}), 400
         
         # 创建临时文件
         temp_dir = tempfile.gettempdir()
@@ -578,14 +706,21 @@ def export_invoices():
         # 导出
         export_service.export_to_excel(invoices, export_path)
         
+        # 生成文件名
+        if len(invoices) == len(all_invoices):
+            filename = f'发票汇总_全部_{timestamp}.xlsx'
+        else:
+            filename = f'发票汇总_已选{len(invoices)}条_{timestamp}.xlsx'
+        
         return send_file(
             export_path,
             as_attachment=True,
-            download_name=f'发票汇总_{timestamp}.xlsx',
+            download_name=filename,
             mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         )
         
     except Exception as e:
+        logger.error(f'导出Excel失败: {str(e)}')
         return jsonify({'success': False, 'message': f'导出失败: {str(e)}'}), 500
 
 
@@ -604,25 +739,39 @@ def download_pdf(invoice_number):
     Returns:
         PDF文件
     """
-    manager = get_invoice_manager()
-    invoices = manager.get_all_invoices()
-    
-    # 是否为预览模式（内联显示）
-    preview = request.args.get('preview', 'false').lower() == 'true'
-    
-    for invoice in invoices:
-        if invoice.invoice_number == invoice_number:
-            if invoice.file_path and os.path.exists(invoice.file_path):
+    try:
+        manager = get_invoice_manager()
+        invoices = manager.get_all_invoices()
+        
+        # 是否为预览模式（内联显示）
+        preview = request.args.get('preview', 'false').lower() == 'true'
+        
+        for invoice in invoices:
+            if invoice.invoice_number == invoice_number:
+                # 检查文件路径
+                if not invoice.file_path:
+                    logger.error(f"发票 {invoice_number} 没有文件路径")
+                    return jsonify({'success': False, 'message': 'PDF文件路径不存在'}), 404
+                
+                # 检查文件是否存在
+                if not os.path.exists(invoice.file_path):
+                    logger.error(f"PDF文件不存在: {invoice.file_path}")
+                    return jsonify({'success': False, 'message': f'PDF文件不存在: {invoice.file_path}'}), 404
+                
+                # 返回PDF文件
                 return send_file(
                     invoice.file_path,
                     as_attachment=not preview,  # 预览时不作为附件
                     download_name=f'{invoice_number}.pdf',
                     mimetype='application/pdf'
                 )
-            else:
-                return jsonify({'success': False, 'message': 'PDF文件不存在'}), 404
-    
-    return jsonify({'success': False, 'message': '发票不存在'}), 404
+        
+        logger.error(f"发票不存在: {invoice_number}")
+        return jsonify({'success': False, 'message': '发票不存在'}), 404
+        
+    except Exception as e:
+        logger.error(f"获取PDF文件失败: {str(e)}")
+        return jsonify({'success': False, 'message': f'获取PDF文件失败: {str(e)}'}), 500
 
 
 # ========== 支出凭证相关路由 ==========

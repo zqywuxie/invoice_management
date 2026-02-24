@@ -4,6 +4,29 @@
  */
 
 const USER_API_BASE = '/user/api';
+const PREFERENCE_API_BASE = '/api';
+
+async function getUserPreference(prefKey) {
+    const response = await fetch(`${PREFERENCE_API_BASE}/user/preferences/${encodeURIComponent(prefKey)}`);
+    const data = await response.json();
+    if (!response.ok) {
+        throw new Error(data.message || 'Failed to get user preference');
+    }
+    return data;
+}
+
+async function setUserPreference(prefKey, value) {
+    const response = await fetch(`${PREFERENCE_API_BASE}/user/preferences/${encodeURIComponent(prefKey)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ value })
+    });
+    const data = await response.json();
+    if (!response.ok) {
+        throw new Error(data.message || 'Failed to save user preference');
+    }
+    return data;
+}
 
 // Utility Functions
 function showMessage(message, type = 'info') {
@@ -1160,15 +1183,432 @@ async function handleSavePerson() {
 
 
 // ========== Invoices Page ==========
-let allInvoices = []; // 存储所有发票用于筛选
-let currentStatusFilter = ''; // 当前状态筛选
-let currentRecordTypeFilter = ''; // 当前记录类型筛选
+let allInvoices = []; // Current page invoices
+let currentStatusFilter = '';
+let currentRecordTypeFilter = '';
+let currentPage = 1;
+let totalPages = 1;
+const PAGE_SIZE = 20;
+const UserInvoiceColumnSettings = {
+    visibilityStorageKey: 'user_invoice_column_visibility_v1',
+    orderStorageKey: 'user_invoice_column_order_v1',
+    widthStorageKey: 'user_invoice_column_width_v1',
+    serverPreferenceKey: 'user_invoice_column_layout',
+    syncDebounceMs: 800,
+    defaults: {
+        invoice_number: true,
+        invoice_date: true,
+        item_name: true,
+        amount: true,
+        scan_time: true,
+        record_type: true,
+        reimbursement_status: true,
+        voucher: true
+    },
+    visibility: {},
+    order: [],
+    widths: {},
+    draggingColumn: null,
+    isResizing: false,
+    headerInteractionsBound: false,
+    syncTimer: null,
+
+    init() {
+        this.visibility = { ...this.defaults, ...this.loadVisibility() };
+        this.order = this.loadOrder();
+        this.widths = this.loadWidths();
+        this.normalizeState();
+        this.bindEvents();
+        this.applyToTable();
+        this.initHeaderInteractions();
+        this.syncMenu();
+        this.loadFromServer();
+    },
+
+    getColumns() {
+        return Object.keys(this.defaults);
+    },
+
+    bindEvents() {
+        const menu = document.getElementById('userColumnVisibilityMenu');
+        if (menu) {
+            menu.addEventListener('click', (e) => e.stopPropagation());
+            menu.addEventListener('change', (e) => {
+                const target = e.target;
+                if (!(target instanceof HTMLInputElement) || !target.classList.contains('user-column-toggle')) return;
+                const column = target.dataset.column;
+                if (!column) return;
+                const visibleCount = this.countVisibleColumns();
+                if (!target.checked && visibleCount <= 1) {
+                    target.checked = true;
+                    showMessage('At least one column must stay visible', 'error');
+                    return;
+                }
+                this.setColumn(column, target.checked);
+            });
+        }
+
+        document.getElementById('userShowAllColumnsBtn')?.addEventListener('click', () => this.showAll());
+        document.getElementById('userResetColumnsBtn')?.addEventListener('click', () => this.reset());
+    },
+
+    countVisibleColumns() {
+        return Object.values(this.visibility).filter(Boolean).length;
+    },
+
+    setColumn(column, visible) {
+        if (!(column in this.defaults)) return;
+        this.visibility[column] = Boolean(visible);
+        this.saveVisibility();
+        this.syncMenu();
+        this.applyToTable();
+        this.scheduleSyncToServer();
+    },
+
+    showAll() {
+        this.visibility = { ...this.defaults };
+        this.saveVisibility();
+        this.syncMenu();
+        this.applyToTable();
+        this.scheduleSyncToServer();
+    },
+
+    reset() {
+        this.visibility = { ...this.defaults };
+        this.order = this.getColumns();
+        this.widths = {};
+        localStorage.removeItem(this.visibilityStorageKey);
+        localStorage.removeItem(this.orderStorageKey);
+        localStorage.removeItem(this.widthStorageKey);
+        this.syncMenu();
+        this.applyToTable();
+        this.scheduleSyncToServer();
+    },
+
+    applyToTable() {
+        this.applyOrder();
+        this.applyWidths();
+        this.getColumns().forEach((column) => {
+            const isVisible = this.visibility[column] !== false;
+            document.querySelectorAll(`#invoice-table-card .col-${column}`).forEach((el) => {
+                el.classList.toggle('d-none', !isVisible);
+            });
+        });
+    },
+
+    syncMenu() {
+        const menu = document.getElementById('userColumnVisibilityMenu');
+        if (!menu) return;
+        menu.querySelectorAll('.user-column-toggle').forEach((input) => {
+            if (!(input instanceof HTMLInputElement)) return;
+            const column = input.dataset.column;
+            if (!column) return;
+            input.checked = this.visibility[column] !== false;
+        });
+    },
+
+    normalizeState() {
+        this.getColumns().forEach((key) => {
+            if (typeof this.visibility[key] !== 'boolean') {
+                this.visibility[key] = this.defaults[key];
+            }
+        });
+
+        const seen = new Set();
+        const ordered = [];
+        this.order.forEach((key) => {
+            if (!seen.has(key) && key in this.defaults) {
+                seen.add(key);
+                ordered.push(key);
+            }
+        });
+        this.getColumns().forEach((key) => {
+            if (!seen.has(key)) ordered.push(key);
+        });
+        this.order = ordered;
+
+        const normalizedWidths = {};
+        Object.entries(this.widths || {}).forEach(([key, value]) => {
+            const width = Number(value);
+            if ((key in this.defaults) && Number.isFinite(width) && width > 40) {
+                normalizedWidths[key] = Math.round(width);
+            }
+        });
+        this.widths = normalizedWidths;
+    },
+
+    extractColumnKey(element) {
+        if (!element || !element.classList) return '';
+        const cls = Array.from(element.classList).find(c => c.startsWith('col-'));
+        return cls ? cls.slice(4) : '';
+    },
+
+    applyOrder() {
+        const table = document.querySelector('#invoice-table-card table');
+        const headerRow = table?.querySelector('thead tr');
+        if (!headerRow) return;
+
+        this.order.forEach((column) => {
+            const header = headerRow.querySelector(`th.col-${column}`);
+            if (header) headerRow.appendChild(header);
+        });
+
+        const rows = document.querySelectorAll('#invoice-tbody tr');
+        rows.forEach((row) => {
+            this.order.forEach((column) => {
+                const cell = row.querySelector(`td.col-${column}`);
+                if (cell) row.appendChild(cell);
+            });
+        });
+    },
+
+    applyWidths() {
+        this.getColumns().forEach((column) => {
+            const width = this.widths[column];
+            if (Number.isFinite(width)) {
+                this.applyColumnWidth(column, width);
+            } else {
+                this.clearColumnWidth(column);
+            }
+        });
+    },
+
+    getMinWidth(column) {
+        if (column === 'item_name') return 140;
+        return 90;
+    },
+
+    applyColumnWidth(column, width) {
+        const bounded = Math.max(this.getMinWidth(column), Math.min(900, Math.round(width)));
+        document.querySelectorAll(`#invoice-table-card th.col-${column}, #invoice-table-card td.col-${column}`).forEach((el) => {
+            el.style.width = `${bounded}px`;
+            el.style.minWidth = `${bounded}px`;
+        });
+    },
+
+    clearColumnWidth(column) {
+        document.querySelectorAll(`#invoice-table-card th.col-${column}, #invoice-table-card td.col-${column}`).forEach((el) => {
+            el.style.width = '';
+            el.style.minWidth = '';
+        });
+    },
+
+    setColumnWidth(column, width, persist = true) {
+        if (!(column in this.defaults)) return;
+        const bounded = Math.max(this.getMinWidth(column), Math.min(900, Math.round(width)));
+        this.widths[column] = bounded;
+        this.applyColumnWidth(column, bounded);
+        if (persist) {
+            this.saveWidths();
+            this.scheduleSyncToServer();
+        }
+    },
+
+    reorderColumn(sourceColumn, targetColumn, dropRightSide) {
+        if (sourceColumn === targetColumn) return;
+        const sourceIdx = this.order.indexOf(sourceColumn);
+        const targetIdx = this.order.indexOf(targetColumn);
+        if (sourceIdx < 0 || targetIdx < 0) return;
+
+        const next = [...this.order];
+        next.splice(sourceIdx, 1);
+        const insertionBase = next.indexOf(targetColumn);
+        const insertAt = dropRightSide ? insertionBase + 1 : insertionBase;
+        next.splice(insertAt, 0, sourceColumn);
+        this.order = next;
+        this.saveOrder();
+        this.applyToTable();
+        this.scheduleSyncToServer();
+    },
+
+    clearDragIndicators() {
+        document.querySelectorAll('#invoice-table-card th.user-reorderable-col').forEach((th) => {
+            th.classList.remove('user-drag-over-left', 'user-drag-over-right', 'user-dragging-col');
+        });
+    },
+
+    initHeaderInteractions() {
+        if (this.headerInteractionsBound) return;
+        const headers = document.querySelectorAll('#invoice-table-card thead th');
+        if (!headers.length) return;
+        this.headerInteractionsBound = true;
+
+        headers.forEach((th) => {
+            const column = this.extractColumnKey(th);
+            if (!column) return;
+
+            th.classList.add('user-reorderable-col');
+            th.draggable = true;
+
+            if (!th.querySelector('.user-col-resizer')) {
+                const resizer = document.createElement('span');
+                resizer.className = 'user-col-resizer';
+                th.appendChild(resizer);
+
+                resizer.addEventListener('mousedown', (event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    this.isResizing = true;
+                    const startX = event.clientX;
+                    const startWidth = th.getBoundingClientRect().width;
+
+                    const onMouseMove = (moveEvent) => {
+                        const delta = moveEvent.clientX - startX;
+                        this.setColumnWidth(column, startWidth + delta, false);
+                    };
+
+                    const onMouseUp = () => {
+                        window.removeEventListener('mousemove', onMouseMove);
+                        window.removeEventListener('mouseup', onMouseUp);
+                        this.isResizing = false;
+                        this.saveWidths();
+                        this.scheduleSyncToServer();
+                    };
+
+                    window.addEventListener('mousemove', onMouseMove);
+                    window.addEventListener('mouseup', onMouseUp);
+                });
+            }
+
+            th.addEventListener('dragstart', (event) => {
+                if (this.isResizing) {
+                    event.preventDefault();
+                    return;
+                }
+                this.draggingColumn = column;
+                th.classList.add('user-dragging-col');
+                if (event.dataTransfer) {
+                    event.dataTransfer.effectAllowed = 'move';
+                    event.dataTransfer.setData('text/plain', column);
+                }
+            });
+
+            th.addEventListener('dragover', (event) => {
+                event.preventDefault();
+                if (!this.draggingColumn || this.draggingColumn === column) return;
+                const rect = th.getBoundingClientRect();
+                const dropRightSide = (event.clientX - rect.left) > rect.width / 2;
+                this.clearDragIndicators();
+                th.classList.add(dropRightSide ? 'user-drag-over-right' : 'user-drag-over-left');
+            });
+
+            th.addEventListener('drop', (event) => {
+                event.preventDefault();
+                const sourceColumn = this.draggingColumn || event.dataTransfer?.getData('text/plain');
+                if (!sourceColumn || sourceColumn === column) return;
+                const rect = th.getBoundingClientRect();
+                const dropRightSide = (event.clientX - rect.left) > rect.width / 2;
+                this.reorderColumn(sourceColumn, column, dropRightSide);
+                this.clearDragIndicators();
+                this.draggingColumn = null;
+            });
+
+            th.addEventListener('dragend', () => {
+                this.draggingColumn = null;
+                this.clearDragIndicators();
+            });
+        });
+    },
+
+    buildPreferencePayload() {
+        return {
+            version: 1,
+            visibility: { ...this.visibility },
+            order: [...this.order],
+            widths: { ...this.widths }
+        };
+    },
+
+    scheduleSyncToServer() {
+        if (this.syncTimer) clearTimeout(this.syncTimer);
+        this.syncTimer = setTimeout(() => this.pushToServer(), this.syncDebounceMs);
+    },
+
+    async pushToServer() {
+        try {
+            await setUserPreference(this.serverPreferenceKey, this.buildPreferencePayload());
+        } catch (error) {
+            console.warn('Failed to sync user invoice layout to server', error);
+        }
+    },
+
+    async loadFromServer() {
+        try {
+            const result = await getUserPreference(this.serverPreferenceKey);
+            const value = result?.value;
+            if (value && typeof value === 'object') {
+                this.applyImportedLayout(value, false);
+            }
+        } catch (error) {
+            console.warn('Failed to load user invoice layout from server', error);
+        }
+    },
+
+    applyImportedLayout(payload, syncServer = true) {
+        if (!payload || typeof payload !== 'object') return;
+        this.visibility = { ...this.defaults, ...(payload.visibility || {}) };
+        this.order = Array.isArray(payload.order) ? payload.order : [];
+        this.widths = payload.widths && typeof payload.widths === 'object' ? payload.widths : {};
+        this.normalizeState();
+
+        if (this.countVisibleColumns() === 0) {
+            const first = this.getColumns()[0];
+            this.visibility[first] = true;
+        }
+
+        this.saveVisibility();
+        this.saveOrder();
+        this.saveWidths();
+        this.syncMenu();
+        this.applyToTable();
+        if (syncServer) this.scheduleSyncToServer();
+    },
+
+    saveVisibility() {
+        localStorage.setItem(this.visibilityStorageKey, JSON.stringify(this.visibility));
+    },
+
+    saveOrder() {
+        localStorage.setItem(this.orderStorageKey, JSON.stringify(this.order));
+    },
+
+    saveWidths() {
+        localStorage.setItem(this.widthStorageKey, JSON.stringify(this.widths));
+    },
+
+    loadVisibility() {
+        try {
+            const raw = localStorage.getItem(this.visibilityStorageKey);
+            return raw ? (JSON.parse(raw) || {}) : {};
+        } catch {
+            return {};
+        }
+    },
+
+    loadOrder() {
+        try {
+            const raw = localStorage.getItem(this.orderStorageKey);
+            const parsed = raw ? JSON.parse(raw) : [];
+            return Array.isArray(parsed) ? parsed : [];
+        } catch {
+            return [];
+        }
+    },
+
+    loadWidths() {
+        try {
+            const raw = localStorage.getItem(this.widthStorageKey);
+            return raw ? (JSON.parse(raw) || {}) : {};
+        } catch {
+            return {};
+        }
+    }
+};
 
 function initInvoicesPage() {
     loadInvoices();
     loadDraftsForInvoicesPage();
 
-    // 清空暂存按钮
     document.getElementById('clear-drafts-btn')?.addEventListener('click', () => {
         if (confirm('确定要清空所有暂存发票吗？')) {
             localStorage.removeItem(DRAFT_STORAGE_KEY);
@@ -1176,21 +1616,33 @@ function initInvoicesPage() {
         }
     });
 
-    // Tab 点击事件 - 按状态筛选
     document.querySelectorAll('#invoiceTabs .nav-link[data-status]').forEach(tab => {
         tab.addEventListener('click', (e) => {
             const status = e.target.closest('.nav-link').dataset.status;
             currentStatusFilter = status || '';
-            renderFilteredInvoices();
+            currentPage = 1;
+            loadInvoices();
         });
     });
 
-    // 记录类型过滤按钮事件
     document.querySelectorAll('input[name="recordTypeFilter"]').forEach(radio => {
         radio.addEventListener('change', (e) => {
             currentRecordTypeFilter = e.target.value;
-            renderFilteredInvoices();
+            currentPage = 1;
+            loadInvoices();
         });
+    });
+
+    document.getElementById('user-pagination-prev')?.addEventListener('click', () => {
+        if (currentPage <= 1) return;
+        currentPage -= 1;
+        loadInvoices();
+    });
+
+    document.getElementById('user-pagination-next')?.addEventListener('click', () => {
+        if (currentPage >= totalPages) return;
+        currentPage += 1;
+        loadInvoices();
     });
 }
 
@@ -1274,16 +1726,25 @@ async function loadInvoices() {
     const errorState = document.getElementById('error-state');
 
     try {
-        const response = await fetch(`${USER_API_BASE}/invoices`);
+        const params = new URLSearchParams();
+        if (currentStatusFilter) params.append('reimbursement_status', currentStatusFilter);
+        if (currentRecordTypeFilter) params.append('record_type', currentRecordTypeFilter);
+        params.append('page', String(currentPage));
+        params.append('page_size', String(PAGE_SIZE));
+        const response = await fetch(`${USER_API_BASE}/invoices?${params.toString()}`);
         const data = await response.json();
 
         loading.classList.add('d-none');
 
-        // 保存所有发票用于筛选
-        allInvoices = data.invoices || [];
+        if ((data.total_pages || 0) > 0 && currentPage > data.total_pages) {
+            currentPage = data.total_pages;
+            loadInvoices();
+            return;
+        }
 
-        // 更新各状态计数和统计信息
+        allInvoices = data.invoices || [];
         updateStatusCounts(data);
+        updatePagination(data);
 
         if (allInvoices.length === 0) {
             emptyState.classList.remove('d-none');
@@ -1291,7 +1752,6 @@ async function loadInvoices() {
             return;
         }
 
-        // 渲染筛选后的发票
         renderFilteredInvoices();
     } catch (error) {
         loading.classList.add('d-none');
@@ -1300,11 +1760,10 @@ async function loadInvoices() {
 }
 
 function updateStatusCounts(data) {
-    const allCount = allInvoices.length;
-    const pendingCount = allInvoices.filter(inv => (inv.reimbursement_status || '未报销') === '未报销').length;
-    const reimbursedCount = allInvoices.filter(inv => inv.reimbursement_status === '已报销').length;
+    const allCount = data.total_count || 0;
+    const pendingCount = data.pending_count || 0;
+    const reimbursedCount = data.completed_count || 0;
 
-    // 更新 tab 上的计数
     const allCountEl = document.getElementById('all-count');
     const pendingCountEl = document.getElementById('pending-count');
     const reimbursedCountEl = document.getElementById('reimbursed-count');
@@ -1313,11 +1772,9 @@ function updateStatusCounts(data) {
     if (pendingCountEl) pendingCountEl.textContent = pendingCount;
     if (reimbursedCountEl) reimbursedCountEl.textContent = reimbursedCount;
 
-    // 更新头部总计统计
     document.getElementById('total-count').textContent = data.total_count || allCount;
     document.getElementById('total-amount').textContent = formatAmount(data.total_amount || 0);
 
-    // 更新分类统计（有发票记录 vs 无发票记录）
     const invoiceCountEl = document.getElementById('invoice-count');
     const manualCountEl = document.getElementById('manual-count');
     const invoiceAmountEl = document.getElementById('invoice-amount');
@@ -1334,22 +1791,7 @@ function renderFilteredInvoices() {
     const emptyState = document.getElementById('empty-state');
     const tbody = document.getElementById('invoice-tbody');
 
-    // 根据当前筛选条件过滤发票
-    let filteredInvoices = allInvoices;
-
-    // 按状态过滤
-    if (currentStatusFilter) {
-        filteredInvoices = filteredInvoices.filter(inv =>
-            (inv.reimbursement_status || '未报销') === currentStatusFilter
-        );
-    }
-
-    // 按记录类型过滤
-    if (currentRecordTypeFilter) {
-        filteredInvoices = filteredInvoices.filter(inv =>
-            (inv.record_type || 'invoice') === currentRecordTypeFilter
-        );
-    }
+    const filteredInvoices = allInvoices;
 
     if (filteredInvoices.length === 0) {
         tableCard.classList.add('d-none');
@@ -1366,7 +1808,6 @@ function renderFilteredInvoices() {
         const status = invoice.reimbursement_status || '未报销';
         const statusClass = status === '已报销' ? 'bg-success' : 'bg-warning text-dark';
 
-        // 记录类型标识
         const recordType = invoice.record_type || 'invoice';
         let recordTypeBadge = '';
         if (recordType === 'manual') {
@@ -1391,6 +1832,25 @@ function renderFilteredInvoices() {
         });
         tbody.appendChild(tr);
     });
+}
+
+function updatePagination(data) {
+    currentPage = data.page || 1;
+    totalPages = Math.max(data.total_pages || 1, 1);
+
+    const info = document.getElementById('user-pagination-info');
+    const prevBtn = document.getElementById('user-pagination-prev');
+    const nextBtn = document.getElementById('user-pagination-next');
+
+    if (info) {
+        info.textContent = `Page ${currentPage} / ${totalPages}, Total ${data.total_count || 0}`;
+    }
+    if (prevBtn) {
+        prevBtn.disabled = currentPage <= 1;
+    }
+    if (nextBtn) {
+        nextBtn.disabled = currentPage >= totalPages;
+    }
 }
 
 // ========== Detail Page ==========

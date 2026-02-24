@@ -27,6 +27,18 @@ const AppState = {
     recordTypeFilter: ''  // 记录类型筛选 (Requirements: 13.4, 13.5)
 };
 
+AppState.pagination = {
+    page: 1,
+    pageSize: 20,
+    totalPages: 1,
+    totalCount: 0
+};
+
+AppState.requestState = {
+    seq: 0,
+    active: 0
+};
+
 // ============================================
 // API Service
 // ============================================
@@ -54,7 +66,7 @@ const API = {
         return response.json();
     },
 
-    async getInvoices(search = '', startDate = '', endDate = '', reimbursementPersonId = '', uploadedBy = '', reimbursementStatus = '', recordType = '') {
+    async getInvoices(search = '', startDate = '', endDate = '', reimbursementPersonId = '', uploadedBy = '', reimbursementStatus = '', recordType = '', page = 1, pageSize = 20) {
         const params = new URLSearchParams();
         if (search) params.append('search', search);
         if (startDate) params.append('start_date', startDate);
@@ -63,6 +75,8 @@ const API = {
         if (uploadedBy) params.append('uploaded_by', uploadedBy);
         if (reimbursementStatus) params.append('reimbursement_status', reimbursementStatus);
         if (recordType) params.append('record_type', recordType);
+        params.append('page', String(page));
+        params.append('page_size', String(pageSize));
         const queryString = params.toString() ? `?${params.toString()}` : '';
         const response = await fetch(`${this.baseUrl}/invoices${queryString}`);
         const data = await response.json();
@@ -196,6 +210,28 @@ const API = {
             body: JSON.stringify({ name })
         });
         return response.json();
+    },
+
+    async getUserPreference(prefKey) {
+        const response = await fetch(`${this.baseUrl}/user/preferences/${encodeURIComponent(prefKey)}`);
+        const data = await response.json();
+        if (!response.ok) {
+            throw new Error(data.message || 'Failed to get user preference');
+        }
+        return data;
+    },
+
+    async setUserPreference(prefKey, value) {
+        const response = await fetch(`${this.baseUrl}/user/preferences/${encodeURIComponent(prefKey)}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ value })
+        });
+        const data = await response.json();
+        if (!response.ok) {
+            throw new Error(data.message || 'Failed to save user preference');
+        }
+        return data;
     },
 
     // Admin API methods
@@ -349,6 +385,25 @@ const DOM = {
     invoiceTable: document.getElementById('invoiceTable'),
     invoiceTableBody: document.getElementById('invoiceTableBody'),
     emptyState: document.getElementById('emptyState'),
+    activeFilterBar: document.getElementById('activeFilterBar'),
+    activeFilterText: document.getElementById('activeFilterText'),
+    clearAllFiltersBtn: document.getElementById('clearAllFiltersBtn'),
+    paginationInfo: document.getElementById('paginationInfo'),
+    paginationPageSize: document.getElementById('paginationPageSize'),
+    paginationPrevBtn: document.getElementById('paginationPrevBtn'),
+    paginationNextBtn: document.getElementById('paginationNextBtn'),
+    selectionBar: document.getElementById('selectionBar'),
+    selectionSummary: document.getElementById('selectionSummary'),
+    clearSelectionBtn: document.getElementById('clearSelectionBtn'),
+    quickBatchExportBtn: document.getElementById('quickBatchExportBtn'),
+    tableLoadingMask: document.getElementById('tableLoadingMask'),
+    columnSettingsBtn: document.getElementById('columnSettingsBtn'),
+    columnVisibilityMenu: document.getElementById('columnVisibilityMenu'),
+    showAllColumnsBtn: document.getElementById('showAllColumnsBtn'),
+    resetColumnsBtn: document.getElementById('resetColumnsBtn'),
+    exportColumnLayoutBtn: document.getElementById('exportColumnLayoutBtn'),
+    importColumnLayoutBtn: document.getElementById('importColumnLayoutBtn'),
+    importColumnLayoutInput: document.getElementById('importColumnLayoutInput'),
 
     // Search
     searchInput: document.getElementById('searchInput'),
@@ -622,9 +677,11 @@ const InvoiceTable = {
 
         const rows = sorted.map(invoice => this.createRow(invoice)).join('');
         DOM.invoiceTableBody.innerHTML = rows;
+        ColumnSettings.applyToTable();
 
         // Update sort indicators
         this.updateSortIndicators();
+        this.updateSelectionRowHighlight();
         this.updateSelectAllCheckbox();
         this.updateBatchExportButton();
     },
@@ -658,24 +715,24 @@ const InvoiceTable = {
             : '<span class="badge badge-invoice"><i class="bi bi-file-earmark-pdf me-1"></i>有发票</span>';
 
         return `
-            <tr data-invoice-number="${Utils.escapeHtml(invoice.invoice_number)}">
+            <tr data-invoice-number="${Utils.escapeHtml(invoice.invoice_number)}" class="${isChecked ? 'row-selected' : ''}">
                 <td class="text-center">
                     <input type="checkbox" class="form-check-input invoice-checkbox" 
                            data-invoice-number="${Utils.escapeHtml(invoice.invoice_number)}"
                            ${isChecked ? 'checked' : ''}>
                 </td>
-                <td>${Utils.escapeHtml(invoice.invoice_number)}</td>
-                <td>${Utils.escapeHtml(invoice.invoice_date)}</td>
-                <td>${Utils.escapeHtml(invoice.item_name)}</td>
-                <td class="text-end amount-cell">${Utils.formatCurrency(invoice.amount)}</td>
-                <td>${Utils.escapeHtml(invoice.reimbursement_person_name || '-')}</td>
-                <td>${Utils.escapeHtml(invoice.remark || '-')}</td>
-                <td>${Utils.escapeHtml(invoice.uploaded_by || '-')}</td>
-                <td><small class="text-muted">${Utils.escapeHtml(invoice.time_ago || '-')}</small></td>
-                <td class="text-center">${statusCell}</td>
-                <td class="text-center">${recordTypeBadge}</td>
-                <td class="text-center">${voucherBadge}</td>
-                <td class="text-center">
+                <td class="col-invoice_number">${Utils.escapeHtml(invoice.invoice_number)}</td>
+                <td class="col-invoice_date">${Utils.escapeHtml(invoice.invoice_date)}</td>
+                <td class="col-item_name">${Utils.escapeHtml(invoice.item_name)}</td>
+                <td class="text-end amount-cell col-amount">${Utils.formatCurrency(invoice.amount)}</td>
+                <td class="col-reimbursement_person_name">${Utils.escapeHtml(invoice.reimbursement_person_name || '-')}</td>
+                <td class="col-remark">${Utils.escapeHtml(invoice.remark || '-')}</td>
+                <td class="col-uploaded_by">${Utils.escapeHtml(invoice.uploaded_by || '-')}</td>
+                <td class="col-scan_time"><small class="text-muted">${Utils.escapeHtml(invoice.time_ago || '-')}</small></td>
+                <td class="text-center col-reimbursement_status">${statusCell}</td>
+                <td class="text-center col-record_type">${recordTypeBadge}</td>
+                <td class="text-center col-voucher">${voucherBadge}</td>
+                <td class="text-center actions-cell col-actions">
                     <button class="btn btn-sm btn-outline-primary me-1 view-btn" title="查看详情">
                         <i class="bi bi-eye"></i>
                     </button>
@@ -712,6 +769,7 @@ const InvoiceTable = {
         } else {
             AppState.selectedInvoices.delete(invoiceNumber);
         }
+        this.updateSelectionRowHighlight();
         this.updateSelectAllCheckbox();
         this.updateBatchExportButton();
     },
@@ -720,7 +778,15 @@ const InvoiceTable = {
         document.querySelectorAll('.invoice-checkbox').forEach(cb => {
             cb.checked = AppState.selectedInvoices.has(cb.dataset.invoiceNumber);
         });
+        this.updateSelectionRowHighlight();
         this.updateSelectAllCheckbox();
+    },
+
+    updateSelectionRowHighlight() {
+        document.querySelectorAll('#invoiceTableBody tr').forEach(row => {
+            const invoiceNumber = row.dataset.invoiceNumber;
+            row.classList.toggle('row-selected', AppState.selectedInvoices.has(invoiceNumber));
+        });
     },
 
     updateSelectAllCheckbox() {
@@ -729,18 +795,43 @@ const InvoiceTable = {
             selectAllCb.checked = AppState.selectedInvoices.size === AppState.invoices.length;
             selectAllCb.indeterminate = AppState.selectedInvoices.size > 0 &&
                 AppState.selectedInvoices.size < AppState.invoices.length;
+        } else if (selectAllCb) {
+            selectAllCb.checked = false;
+            selectAllCb.indeterminate = false;
         }
     },
 
     updateBatchExportButton() {
-        const btn = document.getElementById('batchExportDocxBtn');
-        if (btn) {
-            const count = AppState.selectedInvoices.size;
-            btn.disabled = count === 0;
-            btn.innerHTML = count > 0
-                ? `<i class="bi bi-file-earmark-word me-1"></i>批量导出DOCX (${count})`
-                : `<i class="bi bi-file-earmark-word me-1"></i>批量导出DOCX`;
+        const batchDocxBtn = document.getElementById('batchExportDocxBtn');
+        const exportExcelBtn = document.getElementById('exportBtn');
+        const count = AppState.selectedInvoices.size;
+
+        // 更新底部操作栏的导出按钮文字
+        if (batchDocxBtn) {
+            batchDocxBtn.innerHTML = count > 0
+                ? `<i class="bi bi-file-earmark-word me-1"></i>导出DOCX (${count})`
+                : `<i class="bi bi-file-earmark-word me-1"></i>导出DOCX`;
         }
+
+        if (exportExcelBtn) {
+            exportExcelBtn.innerHTML = count > 0
+                ? `<i class="bi bi-file-earmark-excel me-1"></i>导出Excel (${count})`
+                : `<i class="bi bi-file-earmark-excel me-1"></i>导出Excel`;
+        }
+
+        if (DOM.selectionSummary) {
+            DOM.selectionSummary.textContent = `已选择 ${count} 条`;
+        }
+
+        if (DOM.selectionBar) {
+            DOM.selectionBar.classList.toggle('d-none', count === 0);
+        }
+    },
+
+    clearSelection() {
+        AppState.selectedInvoices.clear();
+        this.updateCheckboxes();
+        this.updateBatchExportButton();
     },
 
     sortInvoices(invoices) {
@@ -803,25 +894,8 @@ const Search = {
     async execute(query) {
         AppState.searchQuery = query;
         try {
-            const { startDate, endDate } = AppState.dateFilter;
-            const data = await API.getInvoices(
-                query,
-                startDate,
-                endDate,
-                AppState.personFilter,
-                AppState.uploaderFilter,
-                AppState.reimbursementStatusFilter,
-                AppState.recordTypeFilter
-            );
-            InvoiceTable.render(data.invoices);
-            Statistics.update(
-                data.total_count,
-                data.total_amount,
-                data.invoice_count,
-                data.manual_count,
-                data.invoice_amount,
-                data.manual_amount
-            );
+            AppState.pagination.page = 1;
+            await App.loadInvoices();
         } catch (error) {
             if (error.message !== '需要登录') {
                 Toast.error('搜索失败: ' + error.message);
@@ -946,6 +1020,530 @@ const RecordTypeFilter = {
             allRadio.checked = true;
             AppState.recordTypeFilter = '';
             Search.execute(AppState.searchQuery);
+        }
+    }
+};
+
+// ============================================
+// Column Visibility Settings
+// ============================================
+const ColumnSettings = {
+    visibilityStorageKey: 'invoice_admin_column_visibility_v1',
+    orderStorageKey: 'invoice_admin_column_order_v1',
+    widthStorageKey: 'invoice_admin_column_width_v1',
+    serverPreferenceKey: 'admin_column_layout',
+    syncDebounceMs: 800,
+    defaults: {
+        invoice_number: true,
+        invoice_date: true,
+        item_name: true,
+        amount: true,
+        reimbursement_person_name: true,
+        remark: true,
+        uploaded_by: true,
+        scan_time: true,
+        reimbursement_status: true,
+        record_type: true,
+        voucher: true,
+        actions: true
+    },
+    visibility: {},
+    order: [],
+    widths: {},
+    draggingColumn: null,
+    isResizing: false,
+    headerInteractionsBound: false,
+    syncTimer: null,
+
+    init() {
+        this.visibility = {
+            ...this.defaults,
+            ...this.loadVisibility()
+        };
+        this.order = this.loadOrder();
+        this.widths = this.loadWidths();
+        this.normalizeState();
+        this.bindEvents();
+        this.initHeaderInteractions();
+        this.syncMenu();
+        this.applyToTable();
+        this.loadFromServer();
+    },
+
+    getColumns() {
+        return Object.keys(this.defaults);
+    },
+
+    bindEvents() {
+        if (DOM.columnVisibilityMenu) {
+            DOM.columnVisibilityMenu.addEventListener('click', (e) => e.stopPropagation());
+            DOM.columnVisibilityMenu.addEventListener('change', (e) => {
+                const target = e.target;
+                if (!(target instanceof HTMLInputElement) || !target.classList.contains('column-toggle')) return;
+                const column = target.dataset.column;
+                if (!column) return;
+
+                const visibleCount = this.countVisibleColumns();
+                if (!target.checked && visibleCount <= 1) {
+                    target.checked = true;
+                    Toast.warning('At least one column must stay visible');
+                    return;
+                }
+
+                this.setColumn(column, target.checked);
+            });
+        }
+
+        if (DOM.showAllColumnsBtn) {
+            DOM.showAllColumnsBtn.addEventListener('click', () => this.showAll());
+        }
+
+        if (DOM.resetColumnsBtn) {
+            DOM.resetColumnsBtn.addEventListener('click', () => this.reset());
+        }
+
+        if (DOM.exportColumnLayoutBtn) {
+            DOM.exportColumnLayoutBtn.addEventListener('click', () => this.exportLayout());
+        }
+
+        if (DOM.importColumnLayoutBtn && DOM.importColumnLayoutInput) {
+            DOM.importColumnLayoutBtn.addEventListener('click', () => DOM.importColumnLayoutInput.click());
+            DOM.importColumnLayoutInput.addEventListener('change', async (e) => {
+                const input = e.target;
+                const file = input?.files?.[0];
+                if (!file) return;
+                await this.importLayout(file);
+                input.value = '';
+            });
+        }
+    },
+
+    countVisibleColumns() {
+        return Object.values(this.visibility).filter(Boolean).length;
+    },
+
+    setColumn(column, visible) {
+        if (!(column in this.defaults)) return;
+        this.visibility[column] = Boolean(visible);
+        this.saveVisibility();
+        this.syncMenu();
+        this.applyToTable();
+        this.scheduleSyncToServer();
+    },
+
+    showAll() {
+        this.visibility = { ...this.defaults };
+        this.saveVisibility();
+        this.syncMenu();
+        this.applyToTable();
+        this.scheduleSyncToServer();
+    },
+
+    reset() {
+        this.visibility = { ...this.defaults };
+        this.order = this.getColumns();
+        this.widths = {};
+        localStorage.removeItem(this.visibilityStorageKey);
+        localStorage.removeItem(this.orderStorageKey);
+        localStorage.removeItem(this.widthStorageKey);
+        this.syncMenu();
+        this.applyToTable();
+        this.scheduleSyncToServer();
+    },
+
+    applyToTable() {
+        this.applyOrder();
+        this.applyWidths();
+        Object.entries(this.defaults).forEach(([column]) => {
+            const isVisible = this.visibility[column] !== false;
+            document.querySelectorAll(`.col-${column}`).forEach(el => {
+                el.classList.toggle('d-none', !isVisible);
+            });
+        });
+        this.initHeaderInteractions();
+    },
+
+    syncMenu() {
+        if (!DOM.columnVisibilityMenu) return;
+        DOM.columnVisibilityMenu.querySelectorAll('.column-toggle').forEach(input => {
+            if (!(input instanceof HTMLInputElement)) return;
+            const column = input.dataset.column;
+            if (!column) return;
+            input.checked = this.visibility[column] !== false;
+        });
+    },
+
+    normalizeState() {
+        Object.keys(this.defaults).forEach((key) => {
+            if (typeof this.visibility[key] !== 'boolean') {
+                this.visibility[key] = this.defaults[key];
+            }
+        });
+
+        const seen = new Set();
+        const ordered = [];
+        this.order.forEach((key) => {
+            if (!seen.has(key) && key in this.defaults) {
+                seen.add(key);
+                ordered.push(key);
+            }
+        });
+        this.getColumns().forEach((key) => {
+            if (!seen.has(key)) ordered.push(key);
+        });
+        this.order = ordered;
+
+        const normalizedWidths = {};
+        Object.entries(this.widths || {}).forEach(([key, value]) => {
+            const width = Number(value);
+            if ((key in this.defaults) && Number.isFinite(width) && width > 40) {
+                normalizedWidths[key] = Math.round(width);
+            }
+        });
+        this.widths = normalizedWidths;
+    },
+
+    extractColumnKey(element) {
+        if (!element || !element.classList) return '';
+        const className = Array.from(element.classList).find(cls => cls.startsWith('col-'));
+        return className ? className.slice(4) : '';
+    },
+
+    applyOrder() {
+        const headerRow = DOM.invoiceTable?.querySelector('thead tr');
+        if (!headerRow) return;
+
+        this.order.forEach((column) => {
+            const header = headerRow.querySelector(`th.col-${column}`);
+            if (header) headerRow.appendChild(header);
+        });
+
+        const rows = DOM.invoiceTableBody?.querySelectorAll('tr') || [];
+        rows.forEach((row) => {
+            this.order.forEach((column) => {
+                const cell = row.querySelector(`td.col-${column}`);
+                if (cell) row.appendChild(cell);
+            });
+        });
+    },
+
+    applyWidths() {
+        this.getColumns().forEach((column) => {
+            const width = this.widths[column];
+            if (Number.isFinite(width)) {
+                this.applyColumnWidth(column, width);
+            } else {
+                this.clearColumnWidth(column);
+            }
+        });
+    },
+
+    getMinWidth(column) {
+        if (column === 'actions') return 180;
+        if (column === 'item_name' || column === 'remark') return 140;
+        return 90;
+    },
+
+    applyColumnWidth(column, width) {
+        const bounded = Math.max(this.getMinWidth(column), Math.min(900, Math.round(width)));
+        document.querySelectorAll(`th.col-${column}, td.col-${column}`).forEach((el) => {
+            el.style.width = `${bounded}px`;
+            el.style.minWidth = `${bounded}px`;
+        });
+    },
+
+    clearColumnWidth(column) {
+        document.querySelectorAll(`th.col-${column}, td.col-${column}`).forEach((el) => {
+            el.style.width = '';
+            el.style.minWidth = '';
+        });
+    },
+
+    setColumnWidth(column, width, persist = true) {
+        if (!(column in this.defaults)) return;
+        const bounded = Math.max(this.getMinWidth(column), Math.min(900, Math.round(width)));
+        this.widths[column] = bounded;
+        this.applyColumnWidth(column, bounded);
+        if (persist) {
+            this.saveWidths();
+            this.scheduleSyncToServer();
+        }
+    },
+
+    reorderColumn(sourceColumn, targetColumn, dropRightSide) {
+        if (sourceColumn === targetColumn) return;
+        const sourceIdx = this.order.indexOf(sourceColumn);
+        const targetIdx = this.order.indexOf(targetColumn);
+        if (sourceIdx < 0 || targetIdx < 0) return;
+
+        const next = [...this.order];
+        next.splice(sourceIdx, 1);
+        const insertionBase = next.indexOf(targetColumn);
+        const insertAt = dropRightSide ? insertionBase + 1 : insertionBase;
+        next.splice(insertAt, 0, sourceColumn);
+        this.order = next;
+        this.saveOrder();
+        this.applyToTable();
+        this.scheduleSyncToServer();
+    },
+
+    clearDragIndicators() {
+        DOM.invoiceTable?.querySelectorAll('th.reorderable-col').forEach((th) => {
+            th.classList.remove('drag-over-left', 'drag-over-right', 'dragging-col');
+        });
+    },
+
+    initHeaderInteractions() {
+        if (!DOM.invoiceTable || this.headerInteractionsBound) return;
+        this.headerInteractionsBound = true;
+
+        const headers = DOM.invoiceTable.querySelectorAll('thead th');
+        headers.forEach((th) => {
+            const column = this.extractColumnKey(th);
+            if (!column) return;
+
+            th.classList.add('reorderable-col');
+            th.draggable = true;
+
+            if (!th.querySelector('.col-resizer')) {
+                const resizer = document.createElement('span');
+                resizer.className = 'col-resizer';
+                th.appendChild(resizer);
+
+                resizer.addEventListener('mousedown', (event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+
+                    this.isResizing = true;
+                    th.classList.add('resizing-col');
+                    const startX = event.clientX;
+                    const startWidth = th.getBoundingClientRect().width;
+
+                    const onMouseMove = (moveEvent) => {
+                        const delta = moveEvent.clientX - startX;
+                        this.setColumnWidth(column, startWidth + delta, false);
+                    };
+
+                    const onMouseUp = () => {
+                        window.removeEventListener('mousemove', onMouseMove);
+                        window.removeEventListener('mouseup', onMouseUp);
+                        th.classList.remove('resizing-col');
+                        this.isResizing = false;
+                        this.saveWidths();
+                        this.scheduleSyncToServer();
+                    };
+
+                    window.addEventListener('mousemove', onMouseMove);
+                    window.addEventListener('mouseup', onMouseUp);
+                });
+            }
+
+            th.addEventListener('dragstart', (event) => {
+                if (this.isResizing) {
+                    event.preventDefault();
+                    return;
+                }
+                this.draggingColumn = column;
+                th.classList.add('dragging-col');
+                if (event.dataTransfer) {
+                    event.dataTransfer.effectAllowed = 'move';
+                    event.dataTransfer.setData('text/plain', column);
+                }
+            });
+
+            th.addEventListener('dragover', (event) => {
+                event.preventDefault();
+                if (!this.draggingColumn || this.draggingColumn === column) return;
+                const rect = th.getBoundingClientRect();
+                const dropRightSide = (event.clientX - rect.left) > rect.width / 2;
+                this.clearDragIndicators();
+                th.classList.add(dropRightSide ? 'drag-over-right' : 'drag-over-left');
+            });
+
+            th.addEventListener('drop', (event) => {
+                event.preventDefault();
+                const sourceColumn = this.draggingColumn || event.dataTransfer?.getData('text/plain');
+                if (!sourceColumn || sourceColumn === column) return;
+                const rect = th.getBoundingClientRect();
+                const dropRightSide = (event.clientX - rect.left) > rect.width / 2;
+                this.reorderColumn(sourceColumn, column, dropRightSide);
+                this.clearDragIndicators();
+                this.draggingColumn = null;
+            });
+
+            th.addEventListener('dragend', () => {
+                this.draggingColumn = null;
+                this.clearDragIndicators();
+            });
+        });
+    },
+
+    buildPreferencePayload() {
+        return {
+            version: 1,
+            visibility: { ...this.visibility },
+            order: [...this.order],
+            widths: { ...this.widths }
+        };
+    },
+
+    buildLayoutSnapshot() {
+        return {
+            ...this.buildPreferencePayload(),
+            exported_at: new Date().toISOString()
+        };
+    },
+
+    exportLayout() {
+        try {
+            const payload = this.buildLayoutSnapshot();
+            const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\..+$/, '');
+            link.href = url;
+            link.download = `invoice-column-layout-${stamp}.json`;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            URL.revokeObjectURL(url);
+            Toast.success('Layout exported');
+        } catch (error) {
+            Toast.error('Export layout failed: ' + (error?.message || 'Unknown error'));
+        }
+    },
+
+    async importLayout(file) {
+        try {
+            const text = await file.text();
+            const payload = JSON.parse(text);
+            this.applyImportedLayout(payload, { syncServer: true });
+            Toast.success('Layout imported');
+        } catch (error) {
+            Toast.error('Import layout failed: ' + (error?.message || 'Invalid file'));
+        }
+    },
+
+    applyImportedLayout(payload, options = {}) {
+        const { syncServer = true } = options;
+        if (!payload || typeof payload !== 'object') {
+            throw new Error('Invalid layout schema');
+        }
+
+        const nextVisibility = payload.visibility && typeof payload.visibility === 'object'
+            ? payload.visibility
+            : {};
+        const nextOrder = Array.isArray(payload.order) ? payload.order : [];
+        const nextWidths = payload.widths && typeof payload.widths === 'object'
+            ? payload.widths
+            : {};
+
+        this.visibility = { ...this.defaults, ...nextVisibility };
+        this.order = nextOrder;
+        this.widths = nextWidths;
+        this.normalizeState();
+
+        if (this.countVisibleColumns() === 0) {
+            const first = this.getColumns()[0];
+            this.visibility[first] = true;
+        }
+
+        this.saveVisibility();
+        this.saveOrder();
+        this.saveWidths();
+        this.syncMenu();
+        this.applyToTable();
+        if (syncServer) this.scheduleSyncToServer();
+    },
+
+    scheduleSyncToServer() {
+        if (!AppState.currentUser?.username) return;
+        if (this.syncTimer) {
+            clearTimeout(this.syncTimer);
+        }
+        this.syncTimer = setTimeout(() => {
+            this.pushLayoutToServer();
+        }, this.syncDebounceMs);
+    },
+
+    async pushLayoutToServer() {
+        try {
+            await API.setUserPreference(this.serverPreferenceKey, this.buildPreferencePayload());
+        } catch (error) {
+            console.warn('Failed to sync column layout to server', error);
+        }
+    },
+
+    async loadFromServer() {
+        if (!AppState.currentUser?.username) return;
+        try {
+            const result = await API.getUserPreference(this.serverPreferenceKey);
+            const serverValue = result?.value;
+            if (serverValue && typeof serverValue === 'object') {
+                this.applyImportedLayout(serverValue, { syncServer: false });
+            }
+        } catch (error) {
+            console.warn('Failed to load column layout from server', error);
+        }
+    },
+
+    saveVisibility() {
+        try {
+            localStorage.setItem(this.visibilityStorageKey, JSON.stringify(this.visibility));
+        } catch (error) {
+            console.warn('Failed to persist column visibility settings', error);
+        }
+    },
+
+    saveOrder() {
+        try {
+            localStorage.setItem(this.orderStorageKey, JSON.stringify(this.order));
+        } catch (error) {
+            console.warn('Failed to persist column order settings', error);
+        }
+    },
+
+    saveWidths() {
+        try {
+            localStorage.setItem(this.widthStorageKey, JSON.stringify(this.widths));
+        } catch (error) {
+            console.warn('Failed to persist column width settings', error);
+        }
+    },
+
+    loadVisibility() {
+        try {
+            const raw = localStorage.getItem(this.visibilityStorageKey);
+            if (!raw) return {};
+            const parsed = JSON.parse(raw);
+            return parsed && typeof parsed === 'object' ? parsed : {};
+        } catch (error) {
+            console.warn('Failed to load column visibility settings', error);
+            return {};
+        }
+    },
+
+    loadOrder() {
+        try {
+            const raw = localStorage.getItem(this.orderStorageKey);
+            if (!raw) return [];
+            const parsed = JSON.parse(raw);
+            return Array.isArray(parsed) ? parsed : [];
+        } catch (error) {
+            console.warn('Failed to load column order settings', error);
+            return [];
+        }
+    },
+
+    loadWidths() {
+        try {
+            const raw = localStorage.getItem(this.widthStorageKey);
+            if (!raw) return {};
+            const parsed = JSON.parse(raw);
+            return parsed && typeof parsed === 'object' ? parsed : {};
+        } catch (error) {
+            console.warn('Failed to load column width settings', error);
+            return {};
         }
     }
 };
@@ -2382,6 +2980,7 @@ const Auth = {
                 // 加载筛选数据
                 await PersonFilter.loadPersons();
                 await PersonFilter.loadUploaders();
+                await ColumnSettings.loadFromServer();
                 await App.loadInvoices();
                 return true;
             } else {
@@ -2605,6 +3204,7 @@ const App = {
 
         // Bind event listeners
         this.bindEvents();
+        ColumnSettings.init();
 
         // Load initial data if logged in
         if (isLoggedIn) {
@@ -2650,6 +3250,12 @@ const App = {
         if (batchExportBtn) {
             batchExportBtn.addEventListener('click', () => Export.downloadDocxBatch());
         }
+        if (DOM.quickBatchExportBtn) {
+            DOM.quickBatchExportBtn.addEventListener('click', () => Export.downloadDocxBatch());
+        }
+        if (DOM.clearSelectionBtn) {
+            DOM.clearSelectionBtn.addEventListener('click', () => InvoiceTable.clearSelection());
+        }
 
         // Select all checkbox
         const selectAllCb = document.getElementById('selectAllCheckbox');
@@ -2673,6 +3279,25 @@ const App = {
 
         // Clear search button
         DOM.clearSearchBtn.addEventListener('click', () => Search.clear());
+
+        // Keyboard shortcuts: "/" focuses search, Esc clears current search input
+        document.addEventListener('keydown', (e) => {
+            if (e.key === '/' && !e.ctrlKey && !e.altKey && !e.metaKey) {
+                const active = document.activeElement;
+                const tag = (active?.tagName || '').toLowerCase();
+                const isTyping = ['input', 'textarea', 'select'].includes(tag) || active?.isContentEditable;
+                if (!isTyping && DOM.searchInput) {
+                    e.preventDefault();
+                    DOM.searchInput.focus();
+                    DOM.searchInput.select();
+                }
+            }
+
+            if (e.key === 'Escape' && document.activeElement === DOM.searchInput && DOM.searchInput.value) {
+                e.preventDefault();
+                Search.clear();
+            }
+        });
 
         // Sort column headers
         document.querySelectorAll('.sortable').forEach(th => {
@@ -2871,16 +3496,64 @@ const App = {
 
                 // Update filter and reload
                 AppState.reimbursementStatusFilter = tab.dataset.status || '';
+                AppState.pagination.page = 1;
 
                 await this.loadInvoices();
             });
         }
+
+        if (DOM.paginationPrevBtn) {
+            DOM.paginationPrevBtn.addEventListener('click', async () => {
+                if (AppState.pagination.page <= 1) return;
+                AppState.pagination.page -= 1;
+                await this.loadInvoices();
+            });
+        }
+
+        if (DOM.paginationNextBtn) {
+            DOM.paginationNextBtn.addEventListener('click', async () => {
+                if (AppState.pagination.page >= AppState.pagination.totalPages) return;
+                AppState.pagination.page += 1;
+                await this.loadInvoices();
+            });
+        }
+
+        if (DOM.paginationPageSize) {
+            DOM.paginationPageSize.addEventListener('change', async (e) => {
+                const nextSize = parseInt(e.target.value, 10);
+                if (!Number.isInteger(nextSize) || nextSize <= 0) return;
+                AppState.pagination.pageSize = nextSize;
+                AppState.pagination.page = 1;
+                await this.loadInvoices();
+            });
+        }
+
+        if (DOM.clearAllFiltersBtn) {
+            DOM.clearAllFiltersBtn.addEventListener('click', async () => {
+                await this.clearAllFilters();
+            });
+        }
     },
 
-    updateStatusCounts(invoices) {
-        const allCount = invoices.length;
-        const pendingCount = invoices.filter(inv => (inv.reimbursement_status || '未报销') === '未报销').length;
-        const completedCount = invoices.filter(inv => inv.reimbursement_status === '已报销').length;
+    setTableLoading(loading) {
+        if (DOM.tableLoadingMask) {
+            DOM.tableLoadingMask.classList.toggle('d-none', !loading);
+        }
+        if (DOM.paginationPrevBtn) {
+            DOM.paginationPrevBtn.disabled = loading || AppState.pagination.page <= 1;
+        }
+        if (DOM.paginationNextBtn) {
+            DOM.paginationNextBtn.disabled = loading || AppState.pagination.page >= AppState.pagination.totalPages;
+        }
+        if (DOM.paginationPageSize) {
+            DOM.paginationPageSize.disabled = loading;
+        }
+    },
+
+    updateStatusCounts(data) {
+        const allCount = data.total_count || 0;
+        const pendingCount = data.pending_count || 0;
+        const completedCount = data.completed_count || 0;
 
         const countAll = document.getElementById('countAll');
         const countPending = document.getElementById('countPending');
@@ -2891,25 +3564,118 @@ const App = {
         if (countCompleted) countCompleted.textContent = completedCount;
     },
 
+    buildActiveFilters() {
+        const filters = [];
+        if (AppState.searchQuery) filters.push(`搜索: "${AppState.searchQuery}"`);
+        if (AppState.dateFilter.startDate || AppState.dateFilter.endDate) {
+            const startDate = AppState.dateFilter.startDate || '*';
+            const endDate = AppState.dateFilter.endDate || '*';
+            filters.push(`日期: ${startDate} 至 ${endDate}`);
+        }
+        if (AppState.personFilter) {
+            const personSelect = document.getElementById('personFilterSelect');
+            const personLabel = personSelect?.selectedOptions?.[0]?.textContent?.trim() || AppState.personFilter;
+            filters.push(`报销人员: ${personLabel}`);
+        }
+        if (AppState.uploaderFilter) filters.push(`上传人: ${AppState.uploaderFilter}`);
+        if (AppState.reimbursementStatusFilter) filters.push(`报销状态: ${AppState.reimbursementStatusFilter}`);
+        if (AppState.recordTypeFilter) filters.push(`记录类型: ${AppState.recordTypeFilter}`);
+        return filters;
+    },
+
+    updateFilterSummary() {
+        if (!DOM.activeFilterBar || !DOM.activeFilterText) return;
+        const filters = this.buildActiveFilters();
+        if (filters.length === 0) {
+            DOM.activeFilterBar.classList.add('d-none');
+            DOM.activeFilterText.textContent = '当前无筛选条件';
+            return;
+        }
+        DOM.activeFilterBar.classList.remove('d-none');
+        DOM.activeFilterText.textContent = filters.join(' | ');
+    },
+
+    async clearAllFilters() {
+        AppState.searchQuery = '';
+        AppState.dateFilter.startDate = '';
+        AppState.dateFilter.endDate = '';
+        AppState.personFilter = '';
+        AppState.uploaderFilter = '';
+        AppState.reimbursementStatusFilter = '';
+        AppState.recordTypeFilter = '';
+        AppState.pagination.page = 1;
+
+        if (DOM.searchInput) DOM.searchInput.value = '';
+        if (DOM.startDateInput) DOM.startDateInput.value = '';
+        if (DOM.endDateInput) DOM.endDateInput.value = '';
+
+        const personSelect = document.getElementById('personFilterSelect');
+        const uploaderSelect = document.getElementById('uploaderFilterSelect');
+        if (personSelect) personSelect.value = '';
+        if (uploaderSelect) uploaderSelect.value = '';
+
+        const allTab = document.getElementById('tab-all');
+        const statusTabs = document.getElementById('statusTabs');
+        if (allTab && statusTabs) {
+            statusTabs.querySelectorAll('.nav-link').forEach(t => t.classList.remove('active'));
+            allTab.classList.add('active');
+        }
+
+        const recordTypeAll = document.getElementById('admin-filter-all');
+        if (recordTypeAll) recordTypeAll.checked = true;
+
+        await this.loadInvoices();
+    },
+
+    updatePagination(data) {
+        const page = data.page || 1;
+        const totalPages = Math.max(data.total_pages || 1, 1);
+        const totalCount = data.total_count || 0;
+        const pageSize = data.page_size || AppState.pagination.pageSize;
+
+        AppState.pagination.page = page;
+        AppState.pagination.totalPages = totalPages;
+        AppState.pagination.totalCount = totalCount;
+        AppState.pagination.pageSize = pageSize;
+
+        if (DOM.paginationPageSize && DOM.paginationPageSize.value !== String(pageSize)) {
+            DOM.paginationPageSize.value = String(pageSize);
+        }
+
+        if (DOM.paginationInfo) {
+            const startNum = totalCount === 0 ? 0 : (page - 1) * pageSize + 1;
+            const endNum = totalCount === 0 ? 0 : Math.min(page * pageSize, totalCount);
+            DOM.paginationInfo.textContent = `显示 ${startNum}-${endNum} 条，共 ${totalCount} 条（第 ${page}/${totalPages} 页）`;
+        }
+        if (DOM.paginationPrevBtn) DOM.paginationPrevBtn.disabled = page <= 1;
+        if (DOM.paginationNextBtn) DOM.paginationNextBtn.disabled = page >= totalPages;
+    },
+
     async loadInvoices() {
+        const requestId = ++AppState.requestState.seq;
+        AppState.requestState.active = requestId;
+        this.setTableLoading(true);
+
         try {
             const { startDate, endDate } = AppState.dateFilter;
+            const page = AppState.pagination.page;
+            const pageSize = AppState.pagination.pageSize;
 
-            // First get all invoices for counting (without status filter)
             const allData = await API.getInvoices(
                 AppState.searchQuery,
                 startDate,
                 endDate,
                 AppState.personFilter,
                 AppState.uploaderFilter,
-                '', // No status filter for counting
-                AppState.recordTypeFilter
+                '',
+                AppState.recordTypeFilter,
+                1,
+                1
             );
+            if (requestId !== AppState.requestState.active) return;
 
-            // Update status counts
-            this.updateStatusCounts(allData.invoices);
+            this.updateStatusCounts(allData);
 
-            // Then get filtered invoices
             const data = await API.getInvoices(
                 AppState.searchQuery,
                 startDate,
@@ -2917,24 +3683,42 @@ const App = {
                 AppState.personFilter,
                 AppState.uploaderFilter,
                 AppState.reimbursementStatusFilter,
-                AppState.recordTypeFilter
+                AppState.recordTypeFilter,
+                page,
+                pageSize
             );
+            if (requestId !== AppState.requestState.active) return;
+
+            if ((data.total_pages || 0) > 0 && page > data.total_pages) {
+                AppState.pagination.page = data.total_pages;
+                await this.loadInvoices();
+                return;
+            }
 
             InvoiceTable.render(data.invoices);
             Statistics.update(
-                data.total_count,
-                data.total_amount,
-                data.invoice_count,
-                data.manual_count,
-                data.invoice_amount,
-                data.manual_amount
+                allData.total_count,
+                allData.total_amount,
+                allData.invoice_count,
+                allData.manual_count,
+                allData.invoice_amount,
+                allData.manual_amount
             );
+            this.updatePagination(data);
+            this.updateFilterSummary();
         } catch (error) {
             if (error.message !== '需要登录') {
                 Toast.error('加载发票列表失败: ' + error.message);
             }
             InvoiceTable.render([]);
             Statistics.update(0, 0, 0, 0, '0', '0');
+            this.updateStatusCounts({ total_count: 0, pending_count: 0, completed_count: 0 });
+            this.updatePagination({ page: 1, total_pages: 1, total_count: 0, page_size: AppState.pagination.pageSize });
+            this.updateFilterSummary();
+        } finally {
+            if (requestId === AppState.requestState.active) {
+                this.setTableLoading(false);
+            }
         }
     }
 };
@@ -3554,7 +4338,7 @@ const ReimbursementStatusManager = {
                 }
 
                 // 更新状态计数
-                App.updateStatusCounts(AppState.invoices);
+                await App.loadInvoices();
             } else {
                 Toast.error(result.message || '更新失败');
             }

@@ -1,0 +1,492 @@
+/**
+ * Dark Theme Styles
+ * 暗色主题样式 - 为整个应用提供暗色模式支持
+ */
+
+/* ============================================
+   Dark Theme Variables
+   ============================================ */
+.theme-dark {
+    /* Primary Colors - 暗色模式调整 */
+    --primary-color: #3b82f6;
+    --primary-light: #1e3a8a;
+    --primary-dark: #60a5fa;
+    --primary-hover: #2563eb;
+    
+    /* Success Colors */
+    --success-color: #10b981;
+    --success-light: #064e3b;
+    --success-dark: #34d399;
+    
+    /* Warning Colors */
+    --warning-color: #f59e0b;
+    --warning-light: #78350f;
+    --warning-dark: #fbbf24;
+    
+    /* Danger Colors */
+    --danger-color: #ef4444;
+    --danger-light: #7f1d1d;
+    --danger-dark: #f87171;
+    
+    /* Info Colors */
+    --info-color: #06b6d4;
+    --info-light: #164e63;
+    --info-dark: #22d3ee;
+    
+    /* Text Colors - 暗色模式文字 */
+    --text-primary: #f9fafb;
+    --text-secondary: #d1d5db;
+    --text-muted: #9ca3af;
+    --text-light: #6b7280;
+    
+    /* Background Colors - 暗色背景 */
+    --bg-primary: #111827;
+    --bg-secondary: #1f2937;
+    --bg-tertiary: #374151;
+    --bg-light: #1f2937;
+    --bg-white: #1f2937;
+    --bg-hover: #374151;
+    
+    /* Border Colors - 暗色边框 */
+    --border-color: #374151;
+    --border-light: #4b5563;
+    --border-dark: #6b7280;
+    
+    /* Shadows - 暗色阴影 */
+    --shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+    --shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.4), 0 1px 2px -1px rgba(0, 0, 0, 0.4);
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.5), 0 2px 4px -2px rgba(0, 0, 0, 0.5);
+    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.6), 0 4px 6px -4px rgba(0, 0, 0, 0.6);
+    --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.7), 0 8px 10px -6px rgba(0, 0, 0, 0.7);
+}
+
+/* ============================================
+   Base Styles - Dark Mode
+   ============================================ */
+.theme-dark body {
+    background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+    color: var(--text-primary);
+}
+
+/* ============================================
+   Navigation - Dark Mode
+   ============================================ */
+.theme-dark .navbar {
+    background: rgba(31, 41, 55, 0.95) !important;
+    border-bottom-color: var(--border-color);
+}
+
+.theme-dark .navbar-brand {
+    background: linear-gradient(135deg, var(--primary-color) 0%, var(--info-color) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.theme-dark .nav-link {
+    color: var(--text-secondary) !important;
+}
+
+.theme-dark .nav-link:hover,
+.theme-dark .nav-link.active {
+    color: var(--primary-color) !important;
+}
+
+.theme-dark .dropdown-menu {
+    background-color: var(--bg-secondary);
+    border-color: var(--border-color);
+}
+
+.theme-dark .dropdown-item {
+    color: var(--text-primary);
+}
+
+.theme-dark .dropdown-item:hover {
+    background-color: var(--bg-hover);
+    color: var(--primary-color);
+}
+
+.theme-dark .dropdown-divider {
+    border-color: var(--border-color);
+}
+
+/* ============================================
+   Cards - Dark Mode
+   ============================================ */
+.theme-dark .card {
+    background-color: var(--bg-secondary);
+    border-color: var(--border-color);
+}
+
+.theme-dark .card-header {
+    background-color: var(--bg-tertiary);
+    border-bottom-color: var(--border-color);
+}
+
+/* ============================================
+   Tables - Dark Mode
+   ============================================ */
+.theme-dark .table {
+    color: var(--text-primary);
+}
+
+.theme-dark .table thead th {
+    background: linear-gradient(to bottom, var(--bg-tertiary) 0%, var(--bg-secondary) 100%);
+    color: var(--text-secondary);
+    border-bottom-color: var(--primary-color);
+}
+
+.theme-dark .table tbody td {
+    border-bottom-color: var(--border-color);
+}
+
+.theme-dark .table-hover tbody tr:hover {
+    background: linear-gradient(to right, rgba(59, 130, 246, 0.15) 0%, rgba(59, 130, 246, 0.05) 100%);
+}
+
+.theme-dark .table tbody tr.row-selected {
+    background: rgba(59, 130, 246, 0.2);
+}
+
+.theme-dark .admin-table-wrap thead th {
+    background-color: var(--bg-tertiary);
+}
+
+/* ============================================
+   Forms - Dark Mode
+   ============================================ */
+.theme-dark .form-control,
+.theme-dark .form-select {
+    background-color: var(--bg-tertiary);
+    border-color: var(--border-color);
+    color: var(--text-primary);
+}
+
+.theme-dark .form-control:focus,
+.theme-dark .form-select:focus {
+    background-color: var(--bg-secondary);
+    border-color: var(--primary-color);
+    color: var(--text-primary);
+    box-shadow: 0 0 0 0.2rem rgba(59, 130, 246, 0.25);
+}
+
+.theme-dark .form-control::placeholder {
+    color: var(--text-muted);
+}
+
+.theme-dark .form-label {
+    color: var(--text-secondary);
+}
+
+.theme-dark .input-group-text {
+    background-color: var(--bg-tertiary);
+    border-color: var(--border-color);
+    color: var(--text-secondary);
+}
+
+/* ============================================
+   Buttons - Dark Mode
+   ============================================ */
+.theme-dark .btn-outline-primary {
+    color: var(--primary-color);
+    border-color: var(--primary-color);
+}
+
+.theme-dark .btn-outline-primary:hover {
+    background-color: var(--primary-color);
+    color: white;
+}
+
+.theme-dark .btn-outline-secondary {
+    color: var(--text-secondary);
+    border-color: var(--border-color);
+}
+
+.theme-dark .btn-outline-secondary:hover {
+    background-color: var(--bg-tertiary);
+    color: var(--text-primary);
+}
+
+.theme-dark .btn-outline-success {
+    color: var(--success-color);
+    border-color: var(--success-color);
+}
+
+.theme-dark .btn-outline-success:hover {
+    background-color: var(--success-color);
+    color: white;
+}
+
+.theme-dark .btn-outline-danger {
+    color: var(--danger-color);
+    border-color: var(--danger-color);
+}
+
+.theme-dark .btn-outline-danger:hover {
+    background-color: var(--danger-color);
+    color: white;
+}
+
+.theme-dark .btn-light {
+    background-color: var(--bg-tertiary);
+    border-color: var(--border-color);
+    color: var(--text-primary);
+}
+
+.theme-dark .btn-light:hover {
+    background-color: var(--bg-hover);
+}
+
+/* ============================================
+   Modals - Dark Mode
+   ============================================ */
+.theme-dark .modal-content {
+    background-color: var(--bg-secondary);
+    border-color: var(--border-color);
+}
+
+.theme-dark .modal-header {
+    border-bottom-color: var(--border-color);
+}
+
+.theme-dark .modal-footer {
+    border-top-color: var(--border-color);
+}
+
+.theme-dark .modal-title {
+    color: var(--text-primary);
+}
+
+.theme-dark .btn-close {
+    filter: invert(1) grayscale(100%) brightness(200%);
+}
+
+/* ============================================
+   Alerts - Dark Mode
+   ============================================ */
+.theme-dark .alert-success {
+    background-color: var(--success-light);
+    border-color: var(--success-color);
+    color: var(--success-dark);
+}
+
+.theme-dark .alert-danger {
+    background-color: var(--danger-light);
+    border-color: var(--danger-color);
+    color: var(--danger-dark);
+}
+
+.theme-dark .alert-warning {
+    background-color: var(--warning-light);
+    border-color: var(--warning-color);
+    color: var(--warning-dark);
+}
+
+.theme-dark .alert-info {
+    background-color: var(--info-light);
+    border-color: var(--info-color);
+    color: var(--info-dark);
+}
+
+/* ============================================
+   Badges - Dark Mode
+   ============================================ */
+.theme-dark .badge {
+    color: white;
+}
+
+.theme-dark .badge-invoice {
+    background-color: var(--primary-color);
+}
+
+.theme-dark .badge-manual {
+    background-color: var(--bg-tertiary);
+}
+
+/* ============================================
+   Toasts - Dark Mode
+   ============================================ */
+.theme-dark .toast {
+    background-color: var(--bg-secondary);
+    border-color: var(--border-color);
+    color: var(--text-primary);
+}
+
+.theme-dark .toast-header {
+    background-color: var(--bg-tertiary);
+    border-bottom-color: var(--border-color);
+    color: var(--text-primary);
+}
+
+/* ============================================
+   Empty States - Dark Mode
+   ============================================ */
+.theme-dark #emptyState,
+.theme-dark #empty-state,
+.theme-dark #error-state {
+    color: var(--text-muted);
+}
+
+/* ============================================
+   Loading Overlay - Dark Mode
+   ============================================ */
+.theme-dark .loading-overlay {
+    background-color: rgba(17, 24, 39, 0.8);
+}
+
+.theme-dark .spinner-border {
+    color: var(--primary-color);
+}
+
+/* ============================================
+   Drop Zone - Dark Mode
+   ============================================ */
+.theme-dark .drop-zone {
+    background: linear-gradient(135deg, var(--bg-tertiary) 0%, var(--bg-secondary) 100%);
+    border-color: var(--border-color);
+}
+
+.theme-dark .drop-zone:hover,
+.theme-dark .drop-zone.dragover {
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.15) 0%, rgba(59, 130, 246, 0.08) 100%);
+    border-color: var(--primary-color);
+}
+
+/* ============================================
+   Voucher Components - Dark Mode
+   ============================================ */
+.theme-dark .voucher-thumbnail,
+.theme-dark .voucher-gallery-item {
+    border-color: var(--border-color);
+    background-color: var(--bg-tertiary);
+}
+
+.theme-dark .voucher-thumbnail:hover,
+.theme-dark .voucher-gallery-item:hover {
+    border-color: var(--primary-color);
+}
+
+.theme-dark .voucher-upload-area {
+    background-color: var(--bg-tertiary);
+    border-color: var(--border-color);
+}
+
+.theme-dark .voucher-drop-zone {
+    border-color: var(--border-color);
+}
+
+.theme-dark .voucher-drop-zone:hover {
+    background-color: var(--bg-secondary);
+}
+
+/* ============================================
+   Pagination - Dark Mode
+   ============================================ */
+.theme-dark .pagination .page-link {
+    background-color: var(--bg-secondary);
+    border-color: var(--border-color);
+    color: var(--text-primary);
+}
+
+.theme-dark .pagination .page-link:hover {
+    background-color: var(--bg-hover);
+    color: var(--primary-color);
+}
+
+.theme-dark .pagination .page-item.active .page-link {
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+}
+
+.theme-dark .pagination .page-item.disabled .page-link {
+    background-color: var(--bg-tertiary);
+    color: var(--text-muted);
+}
+
+/* ============================================
+   Scrollbar - Dark Mode
+   ============================================ */
+.theme-dark ::-webkit-scrollbar {
+    width: 12px;
+    height: 12px;
+}
+
+.theme-dark ::-webkit-scrollbar-track {
+    background: var(--bg-secondary);
+}
+
+.theme-dark ::-webkit-scrollbar-thumb {
+    background: var(--bg-tertiary);
+    border-radius: 6px;
+}
+
+.theme-dark ::-webkit-scrollbar-thumb:hover {
+    background: var(--border-color);
+}
+
+/* ============================================
+   Text Colors - Dark Mode
+   ============================================ */
+.theme-dark .text-muted {
+    color: var(--text-muted) !important;
+}
+
+.theme-dark .text-primary {
+    color: var(--primary-color) !important;
+}
+
+.theme-dark .text-success {
+    color: var(--success-color) !important;
+}
+
+.theme-dark .text-danger {
+    color: var(--danger-color) !important;
+}
+
+.theme-dark .text-warning {
+    color: var(--warning-color) !important;
+}
+
+.theme-dark .text-info {
+    color: var(--info-color) !important;
+}
+
+/* ============================================
+   Background Colors - Dark Mode
+   ============================================ */
+.theme-dark .bg-light {
+    background-color: var(--bg-tertiary) !important;
+}
+
+.theme-dark .bg-white {
+    background-color: var(--bg-secondary) !important;
+}
+
+.theme-dark .bg-primary.bg-opacity-10,
+.theme-dark .bg-success.bg-opacity-10,
+.theme-dark .bg-info.bg-opacity-10,
+.theme-dark .bg-secondary.bg-opacity-10 {
+    background-color: var(--bg-tertiary) !important;
+}
+
+/* ============================================
+   Border Colors - Dark Mode
+   ============================================ */
+.theme-dark .border {
+    border-color: var(--border-color) !important;
+}
+
+.theme-dark .border-bottom {
+    border-bottom-color: var(--border-color) !important;
+}
+
+.theme-dark .border-top {
+    border-top-color: var(--border-color) !important;
+}
+
+/* ============================================
+   Smooth Transitions
+   ============================================ */
+.theme-dark * {
+    transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease;
+}

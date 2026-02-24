@@ -564,6 +564,45 @@ def get_invoices():
             manual_amount: str
         }
     """
+    person_service = get_reimbursement_person_service()
+    data_store = get_data_store()
+    current_user = get_current_user()
+    user_display_name = current_user.get('display_name', '')
+    record_type_filter = request.args.get('record_type', '').strip()
+    reimbursement_status = request.args.get('reimbursement_status', '').strip()
+    page = request.args.get('page', 1, type=int)
+    page_size = request.args.get('page_size', 20, type=int)
+
+    filters = {
+        'uploaded_by': user_display_name,
+        'record_type': record_type_filter,
+        'reimbursement_status': reimbursement_status
+    }
+
+    result = data_store.query_invoices(filters=filters, page=page, page_size=page_size)
+    all_persons = person_service.get_all_persons()
+    person_map = {p.id: p.name for p in all_persons}
+    invoice_dicts = []
+    for row in result['invoices']:
+        inv = row['invoice']
+        person_name = person_map.get(inv.reimbursement_person_id, '') if inv.reimbursement_person_id else ''
+        invoice_dicts.append(invoice_to_dict(inv, row['voucher_count'], person_name))
+
+    return jsonify({
+        'invoices': invoice_dicts,
+        'total_count': result['total_count'],
+        'total_amount': result['total_amount'],
+        'invoice_count': result['invoice_count'],
+        'manual_count': result['manual_count'],
+        'invoice_amount': result['invoice_amount'],
+        'manual_amount': result['manual_amount'],
+        'pending_count': result['pending_count'],
+        'completed_count': result['completed_count'],
+        'page': result['page'],
+        'page_size': result['page_size'],
+        'total_pages': result['total_pages']
+    })
+
     manager = get_invoice_manager()
     voucher_service = get_voucher_service()
     person_service = get_reimbursement_person_service()

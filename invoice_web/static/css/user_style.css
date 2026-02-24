@@ -5,33 +5,77 @@
  */
 
 :root {
-    --primary-color: #0d6efd;
-    --primary-light: #e7f1ff;
-    --primary-dark: #0b5ed7;
-    --success-color: #198754;
-    --success-light: #d1e7dd;
-    --danger-color: #dc3545;
-    --danger-light: #f8d7da;
-    --warning-color: #ffc107;
-    --warning-light: #fff3cd;
-    --text-muted: #6c757d;
-    --text-dark: #212529;
+    /* Primary Colors - 现代蓝色调 */
+    --primary-color: #2563eb;
+    --primary-light: #dbeafe;
+    --primary-dark: #1e40af;
+    --primary-hover: #3b82f6;
+    
+    /* Success Colors - 清新绿色 */
+    --success-color: #10b981;
+    --success-light: #d1fae5;
+    --success-dark: #059669;
+    
+    /* Warning Colors - 温暖橙色 */
+    --warning-color: #f59e0b;
+    --warning-light: #fef3c7;
+    --warning-dark: #d97706;
+    
+    /* Danger Colors - 醒目红色 */
+    --danger-color: #ef4444;
+    --danger-light: #fee2e2;
+    --danger-dark: #dc2626;
+    
+    /* Info Colors - 柔和青色 */
+    --info-color: #06b6d4;
+    --info-light: #cffafe;
+    --info-dark: #0891b2;
+    
+    /* Text Colors - 层次分明 */
+    --text-primary: #111827;
+    --text-secondary: #6b7280;
+    --text-muted: #9ca3af;
+    --text-dark: #111827;
+    
+    /* Background Colors - 细腻渐变 */
+    --bg-primary: #ffffff;
+    --bg-secondary: #f9fafb;
     --bg-light: #f8f9fa;
     --bg-white: #ffffff;
-    --border-color: #dee2e6;
-    --border-light: #e9ecef;
-    --shadow-sm: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
-    --shadow-md: 0 0.5rem 1rem rgba(0, 0, 0, 0.1);
-    --shadow-lg: 0 1rem 3rem rgba(0, 0, 0, 0.15);
-    --transition-fast: 0.15s ease;
-    --transition-normal: 0.3s ease;
+    
+    /* Border Colors - 精致边框 */
+    --border-color: #e5e7eb;
+    --border-light: #f3f4f6;
+    
+    /* Shadows - 立体层次 */
+    --shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+    --shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.1);
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
+    --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+    
+    /* Transitions - 流畅动画 */
+    --transition-fast: 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-normal: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-slow: 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+    
+    /* Border Radius - 统一圆角 */
+    --radius-sm: 0.375rem;
+    --radius-md: 0.5rem;
+    --radius-lg: 0.75rem;
+    --radius-xl: 1rem;
+    --radius-full: 9999px;
 }
 
 /* Base Styles */
 body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-    color: var(--text-dark);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif;
+    color: var(--text-primary);
     line-height: 1.6;
+    background: linear-gradient(135deg, #f5f7fa 0%, #e8ecf1 100%);
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
 }
 
 /* Login Page */
@@ -46,10 +90,23 @@ body {
 .login-card {
     background: white;
     padding: 2.5rem;
-    border-radius: 12px;
-    box-shadow: var(--shadow-lg);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-xl);
     width: 100%;
-    max-width: 400px;
+    max-width: 420px;
+    border: 1px solid var(--border-light);
+    position: relative;
+    overflow: hidden;
+}
+
+.login-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: linear-gradient(90deg, var(--primary-color) 0%, var(--info-color) 100%);
 }
 
 .login-card .form-control {
@@ -110,14 +167,17 @@ body {
 
 /* Cards */
 .card {
-    border: none;
-    border-radius: 12px;
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-lg);
     box-shadow: var(--shadow-sm);
-    transition: box-shadow var(--transition-normal);
+    transition: all var(--transition-normal);
+    background: var(--bg-white);
 }
 
 .card:hover {
-    box-shadow: var(--shadow-md);
+    box-shadow: var(--shadow-lg);
+    transform: translateY(-2px);
+    border-color: var(--border-color);
 }
 
 .card-header {
@@ -131,15 +191,16 @@ body {
 
 /* Drop Zone - PDF Upload */
 .drop-zone {
-    border: 2px dashed var(--border-color);
-    border-radius: 12px;
+    border: 3px dashed var(--border-color);
+    border-radius: var(--radius-xl);
     padding: 4rem 2rem;
     text-align: center;
     cursor: pointer;
     transition: all var(--transition-normal);
-    background-color: var(--bg-light);
+    background: linear-gradient(135deg, var(--bg-light) 0%, var(--bg-secondary) 100%);
     position: relative;
     overflow: hidden;
+    box-shadow: var(--shadow-sm);
 }
 
 .drop-zone::before {
@@ -157,8 +218,9 @@ body {
 .drop-zone:hover,
 .drop-zone.dragover {
     border-color: var(--primary-color);
-    background-color: var(--primary-light);
-    transform: scale(1.01);
+    background: linear-gradient(135deg, var(--primary-light) 0%, rgba(37, 99, 235, 0.08) 100%);
+    transform: scale(1.02);
+    box-shadow: var(--shadow-md);
 }
 
 .drop-zone:hover::before,
@@ -183,7 +245,6 @@ body {
 .drop-zone p {
     font-size: 0.9rem;
 }
-
 
 /* Invoice Preview Card */
 #invoice-preview {
@@ -523,20 +584,42 @@ body {
 
 /* Action Buttons */
 .btn {
-    border-radius: 8px;
-    font-weight: 500;
+    border-radius: var(--radius-md);
+    font-weight: 600;
     transition: all var(--transition-fast);
+    border: none;
+    padding: 0.625rem 1.25rem;
+    position: relative;
+    overflow: hidden;
+}
+
+.btn::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0;
+    height: 0;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.3);
+    transform: translate(-50%, -50%);
+    transition: width 0.6s, height 0.6s;
+}
+
+.btn:hover::before {
+    width: 300px;
+    height: 300px;
 }
 
 .btn-primary {
-    background-color: var(--primary-color);
-    border-color: var(--primary-color);
+    background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-hover) 100%);
+    box-shadow: 0 4px 6px rgba(37, 99, 235, 0.25);
 }
 
 .btn-primary:hover {
-    background-color: var(--primary-dark);
-    border-color: var(--primary-dark);
-    transform: translateY(-1px);
+    background: linear-gradient(135deg, var(--primary-hover) 0%, var(--primary-color) 100%);
+    box-shadow: 0 6px 12px rgba(37, 99, 235, 0.35);
+    transform: translateY(-2px);
 }
 
 .btn-outline-secondary:hover {

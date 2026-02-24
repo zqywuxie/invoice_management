@@ -64,14 +64,8 @@
                 </div>
                 <div class="row mt-3">
                     <div class="col-12 text-end">
-                        <button class="btn btn-primary me-2" id="uploadBtn">
+                        <button class="btn btn-primary" id="uploadBtn">
                             <i class="bi bi-upload me-1"></i>上传发票
-                        </button>
-                        <button class="btn btn-outline-info me-2" id="batchExportDocxBtn" disabled>
-                            <i class="bi bi-file-earmark-word me-1"></i>批量导出DOCX
-                        </button>
-                        <button class="btn btn-outline-success" id="exportBtn">
-                            <i class="bi bi-file-earmark-excel me-1"></i>导出Excel
                         </button>
                     </div>
                 </div>
@@ -84,15 +78,48 @@
         <div class="card shadow-sm">
             <div class="card-header bg-white py-3">
                 <div class="row align-items-center g-3">
-                    <div class="col-auto">
+                    <div class="col-auto d-flex align-items-center gap-2">
                         <h5 class="mb-0 text-primary">
                             <i class="bi bi-receipt me-2"></i>发票列表
                         </h5>
+                        <div class="dropdown">
+                            <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button"
+                                id="columnSettingsBtn" data-bs-toggle="dropdown" aria-expanded="false">
+                                <i class="bi bi-layout-three-columns me-1"></i>Columns
+                            </button>
+                            <div class="dropdown-menu dropdown-menu-end p-3" id="columnVisibilityMenu">
+                                <div class="small text-muted mb-2">显示或隐藏表格列</div>
+                                <div class="small text-muted mb-2">拖动表头可重新排序,拖动边缘可调整宽度</div>
+                                <div class="column-checklist">
+                                    <label class="form-check mb-1"><input class="form-check-input column-toggle" type="checkbox" data-column="invoice_number" checked> <span class="form-check-label">发票号码</span></label>
+                                    <label class="form-check mb-1"><input class="form-check-input column-toggle" type="checkbox" data-column="invoice_date" checked> <span class="form-check-label">开票日期</span></label>
+                                    <label class="form-check mb-1"><input class="form-check-input column-toggle" type="checkbox" data-column="item_name" checked> <span class="form-check-label">项目名称</span></label>
+                                    <label class="form-check mb-1"><input class="form-check-input column-toggle" type="checkbox" data-column="amount" checked> <span class="form-check-label">金额</span></label>
+                                    <label class="form-check mb-1"><input class="form-check-input column-toggle" type="checkbox" data-column="reimbursement_person_name" checked> <span class="form-check-label">报销人</span></label>
+                                    <label class="form-check mb-1"><input class="form-check-input column-toggle" type="checkbox" data-column="remark" checked> <span class="form-check-label">备注</span></label>
+                                    <label class="form-check mb-1"><input class="form-check-input column-toggle" type="checkbox" data-column="uploaded_by" checked> <span class="form-check-label">上传人</span></label>
+                                    <label class="form-check mb-1"><input class="form-check-input column-toggle" type="checkbox" data-column="scan_time" checked> <span class="form-check-label">上传时间</span></label>
+                                    <label class="form-check mb-1"><input class="form-check-input column-toggle" type="checkbox" data-column="reimbursement_status" checked> <span class="form-check-label">报销状态</span></label>
+                                    <label class="form-check mb-1"><input class="form-check-input column-toggle" type="checkbox" data-column="record_type" checked> <span class="form-check-label">记录类型</span></label>
+                                    <label class="form-check mb-1"><input class="form-check-input column-toggle" type="checkbox" data-column="voucher" checked> <span class="form-check-label">凭证</span></label>
+                                    <label class="form-check mb-0"><input class="form-check-input column-toggle" type="checkbox" data-column="actions" checked> <span class="form-check-label">操作</span></label>
+                                </div>
+                                <div class="d-flex gap-2 mt-2">
+                                    <button class="btn btn-sm btn-outline-secondary" type="button" id="showAllColumnsBtn">显示全部</button>
+                                    <button class="btn btn-sm btn-outline-primary" type="button" id="resetColumnsBtn">重置布局</button>
+                                </div>
+                                <div class="d-flex gap-2 mt-2">
+                                    <button class="btn btn-sm btn-outline-success" type="button" id="exportColumnLayoutBtn">导出布局</button>
+                                    <button class="btn btn-sm btn-outline-info" type="button" id="importColumnLayoutBtn">导入布局</button>
+                                </div>
+                                <input type="file" id="importColumnLayoutInput" class="d-none" accept="application/json,.json">
+                            </div>
+                        </div>
                     </div>
                     <div class="col-auto flex-grow-1">
-                        <div class="d-flex flex-wrap gap-2 justify-content-end">
+                        <div class="d-flex flex-wrap gap-2 justify-content-end admin-filter-toolbar">
                             <!-- 搜索框 -->
-                            <div class="search-box" style="min-width: 220px;">
+                            <div class="search-box filter-group" style="min-width: 220px;">
                                 <div class="input-group input-group-sm">
                                     <span class="input-group-text bg-light border-end-0">
                                         <i class="bi bi-search text-muted"></i>
@@ -105,7 +132,7 @@
                                 </div>
                             </div>
                             <!-- 日期筛选 -->
-                            <div class="date-filter" style="min-width: 300px;">
+                            <div class="date-filter filter-group" style="min-width: 300px;">
                                 <div class="input-group input-group-sm">
                                     <span class="input-group-text bg-light border-end-0">
                                         <i class="bi bi-calendar3 text-muted"></i>
@@ -128,7 +155,7 @@
                                 </div>
                             </div>
                             <!-- 人员筛选 -->
-                            <div class="person-filter" style="min-width: 280px;">
+                            <div class="person-filter filter-group" style="min-width: 280px;">
                                 <div class="input-group input-group-sm">
                                     <span class="input-group-text bg-light border-end-0">
                                         <i class="bi bi-people text-muted"></i>
@@ -197,51 +224,100 @@
                         </div>
                     </div>
                 </div>
-                <div class="table-responsive">
+                <div class="px-3 py-2 border-bottom bg-white d-none" id="activeFilterBar">
+                    <div class="d-flex align-items-center justify-content-between gap-2 flex-wrap">
+                        <div class="small text-muted" id="activeFilterText">当前无筛选条件</div>
+                        <button class="btn btn-sm btn-outline-secondary" type="button" id="clearAllFiltersBtn">
+                            <i class="bi bi-arrow-counterclockwise me-1"></i>清空筛选
+                        </button>
+                    </div>
+                </div>
+                <div class="px-3 py-2 border-bottom bg-light d-none" id="selectionBar">
+                    <div class="d-flex align-items-center justify-content-between gap-2 flex-wrap">
+                        <div class="small fw-semibold text-primary" id="selectionSummary">已选择 0 条</div>
+                        <div class="btn-group btn-group-sm" role="group" aria-label="Selection Actions">
+                            <button class="btn btn-outline-secondary" type="button" id="clearSelectionBtn">
+                                <i class="bi bi-x-circle me-1"></i>取消选择
+                            </button>
+                            <button class="btn btn-outline-info" type="button" id="batchExportDocxBtn">
+                                <i class="bi bi-file-earmark-word me-1"></i>导出DOCX
+                            </button>
+                            <button class="btn btn-outline-success" type="button" id="exportBtn">
+                                <i class="bi bi-file-earmark-excel me-1"></i>导出Excel
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="table-responsive admin-table-wrap position-relative">
+                    <div class="table-loading-mask d-none" id="tableLoadingMask">
+                        <div class="d-flex align-items-center gap-2 text-primary">
+                            <div class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></div>
+                            <span>正在加载数据...</span>
+                        </div>
+                    </div>
                     <table class="table table-hover mb-0" id="invoiceTable">
                         <thead class="table-light">
                             <tr>
                                 <th class="text-center" style="width: 40px;">
                                     <input type="checkbox" class="form-check-input" id="selectAllCheckbox" title="全选">
                                 </th>
-                                <th class="sortable" data-sort="invoice_number">
+                                <th class="sortable col-invoice_number" data-sort="invoice_number">
                                     发票号码 <i class="bi bi-arrow-down-up sort-icon"></i>
                                 </th>
-                                <th class="sortable" data-sort="invoice_date">
+                                <th class="sortable col-invoice_date" data-sort="invoice_date">
                                     开票日期 <i class="bi bi-arrow-down-up sort-icon"></i>
                                 </th>
-                                <th class="sortable" data-sort="item_name">
+                                <th class="sortable col-item_name" data-sort="item_name">
                                     项目名称 <i class="bi bi-arrow-down-up sort-icon"></i>
                                 </th>
-                                <th class="sortable text-end" data-sort="amount">
+                                <th class="sortable text-end col-amount" data-sort="amount">
                                     金额 <i class="bi bi-arrow-down-up sort-icon"></i>
                                 </th>
-                                <th class="sortable" data-sort="reimbursement_person_name">
+                                <th class="sortable col-reimbursement_person_name" data-sort="reimbursement_person_name">
                                     报销人 <i class="bi bi-arrow-down-up sort-icon"></i>
                                 </th>
-                                <th class="sortable" data-sort="remark">
+                                <th class="sortable col-remark" data-sort="remark">
                                     备注 <i class="bi bi-arrow-down-up sort-icon"></i>
                                 </th>
-                                <th class="sortable" data-sort="uploaded_by">
+                                <th class="sortable col-uploaded_by" data-sort="uploaded_by">
                                     上传人 <i class="bi bi-arrow-down-up sort-icon"></i>
                                 </th>
-                                <th class="sortable" data-sort="scan_time">
+                                <th class="sortable col-scan_time" data-sort="scan_time">
                                     上传时间 <i class="bi bi-arrow-down-up sort-icon"></i>
                                 </th>
-                                <th class="sortable" data-sort="reimbursement_status">
+                                <th class="sortable col-reimbursement_status" data-sort="reimbursement_status">
                                     报销状态 <i class="bi bi-arrow-down-up sort-icon"></i>
                                 </th>
-                                <th class="sortable" data-sort="record_type">
+                                <th class="sortable col-record_type" data-sort="record_type">
                                     记录类型 <i class="bi bi-arrow-down-up sort-icon"></i>
                                 </th>
-                                <th class="text-center">凭证</th>
-                                <th class="text-center">操作</th>
+                                <th class="text-center col-voucher">凭证</th>
+                                <th class="text-center actions-col col-actions">操作</th>
                             </tr>
                         </thead>
                         <tbody id="invoiceTableBody">
                             <!-- Invoice rows will be rendered here by JavaScript -->
                         </tbody>
                     </table>
+                </div>
+                <div class="d-flex justify-content-between align-items-center px-3 py-2 border-top flex-wrap gap-2">
+                    <div class="d-flex align-items-center gap-2">
+                        <label for="paginationPageSize" class="small text-muted mb-0">每页</label>
+                        <select class="form-select form-select-sm" id="paginationPageSize" style="width: 90px;">
+                            <option value="20" selected>20</option>
+                            <option value="50">50</option>
+                            <option value="100">100</option>
+                        </select>
+                    </div>
+                    <small class="text-muted" id="paginationInfo">第 1 / 1 页，共 0 条</small>
+                    <div class="btn-group btn-group-sm" role="group" aria-label="Pagination">
+                        <button class="btn btn-outline-secondary" id="paginationPrevBtn" type="button" disabled>
+                            <i class="bi bi-chevron-left"></i> 上一页
+                        </button>
+                        <button class="btn btn-outline-secondary" id="paginationNextBtn" type="button" disabled>
+                            下一页 <i class="bi bi-chevron-right"></i>
+                        </button>
+                    </div>
                 </div>
                 <!-- Empty State -->
                 <div class="text-center py-5 d-none" id="emptyState">

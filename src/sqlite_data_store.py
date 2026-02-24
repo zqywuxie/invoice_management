@@ -5,9 +5,10 @@ SQLite数据存储模块 - 负责发票数据的SQLite数据库存储
 
 import os
 import sqlite3
+import uuid
 from datetime import datetime
 from decimal import Decimal
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 import hashlib
 from src.models import Invoice, User, ExpenseVoucher, ReimbursementPerson, Contract, ElectronicSignature, SignatureTemplate
@@ -28,6 +29,13 @@ class SQLiteDataStore:
             db_path: 数据库文件路径，默认为 "data/invoices.db"
         """
         self.db_path = db_path or self.DEFAULT_DB_PATH
+        self._memory_keeper: Optional[sqlite3.Connection] = None
+        self._memory_uri: Optional[str] = None
+        self._is_memory_db = self.db_path == ':memory:'
+        if self._is_memory_db:
+            self._memory_uri = f"file:invoice_mgmt_{uuid.uuid4().hex}?mode=memory&cache=shared"
+            self._memory_keeper = sqlite3.connect(self._memory_uri, uri=True, check_same_thread=False)
+            self._configure_connection(self._memory_keeper)
         self._ensure_data_dir()
         self._init_database()
     
@@ -39,12 +47,25 @@ class SQLiteDataStore:
     
     def _get_connection(self) -> sqlite3.Connection:
         """获取数据库连接"""
-        return sqlite3.connect(self.db_path)
+        if self._is_memory_db and self._memory_uri:
+            conn = sqlite3.connect(self._memory_uri, uri=True, check_same_thread=False)
+        else:
+            conn = sqlite3.connect(self.db_path)
+        self._configure_connection(conn)
+        return conn
+
+    def _configure_connection(self, conn: sqlite3.Connection) -> None:
+        """Apply per-connection pragmas."""
+        conn.execute("PRAGMA foreign_keys = ON")
+        conn.execute("PRAGMA busy_timeout = 3000")
     
     def _init_database(self) -> None:
         """创建数据库表结构和索引"""
         with self._get_connection() as conn:
             cursor = conn.cursor()
+            if not self._is_memory_db:
+                cursor.execute("PRAGMA journal_mode=WAL")
+                cursor.execute("PRAGMA synchronous=NORMAL")
             
             # Create invoices table
             cursor.execute("""
@@ -69,6 +90,16 @@ class SQLiteDataStore:
                     display_name TEXT NOT NULL,
                     created_at TEXT NOT NULL,
                     is_admin INTEGER DEFAULT 0
+                )
+            """)
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS user_preferences (
+                    username TEXT NOT NULL,
+                    pref_key TEXT NOT NULL,
+                    pref_value TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    PRIMARY KEY (username, pref_key)
                 )
             """)
             
@@ -368,6 +399,31 @@ class SQLiteDataStore:
             conn.commit()
             return cursor.rowcount > 0
 
+    def get_user_preference(self, username: str, pref_key: str) -> Optional[str]:
+        """Get a user preference value by key."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT pref_value FROM user_preferences WHERE username = ? AND pref_key = ?",
+                (username, pref_key)
+            )
+            row = cursor.fetchone()
+            return row[0] if row else None
+
+    def set_user_preference(self, username: str, pref_key: str, pref_value: str) -> bool:
+        """Insert or update a user preference value by key."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO user_preferences (username, pref_key, pref_value, updated_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(username, pref_key) DO UPDATE SET
+                    pref_value = excluded.pref_value,
+                    updated_at = excluded.updated_at
+            """, (username, pref_key, pref_value, datetime.now().isoformat()))
+            conn.commit()
+            return True
+
     def serialize_invoice(self, invoice: Invoice) -> tuple:
         """
         将Invoice对象序列化为数据库元组
@@ -528,6 +584,139 @@ class SQLiteDataStore:
             """, (search_pattern,) * 6)
             rows = cursor.fetchall()
             return [self.deserialize_invoice(row) for row in rows]
+
+    def _build_invoice_filters(self, filters: Optional[Dict[str, Any]] = None) -> tuple[str, List[Any]]:
+        """Build SQL WHERE clauses and params for invoice listing."""
+        filters = filters or {}
+        clauses: List[str] = []
+        params: List[Any] = []
+
+        search = str(filters.get('search') or '').strip()
+        if search:
+            pattern = f"%{search}%"
+            clauses.append(
+                "(i.invoice_number LIKE ? OR i.invoice_date LIKE ? OR i.item_name LIKE ? "
+                "OR i.amount LIKE ? OR i.remark LIKE ? OR i.file_path LIKE ?)"
+            )
+            params.extend([pattern] * 6)
+
+        start_date = str(filters.get('start_date') or '').strip()
+        if start_date:
+            clauses.append("i.invoice_date >= ?")
+            params.append(start_date)
+
+        end_date = str(filters.get('end_date') or '').strip()
+        if end_date:
+            clauses.append("i.invoice_date <= ?")
+            params.append(end_date)
+
+        reimbursement_person_id = filters.get('reimbursement_person_id')
+        if reimbursement_person_id not in (None, ''):
+            try:
+                clauses.append("i.reimbursement_person_id = ?")
+                params.append(int(reimbursement_person_id))
+            except (TypeError, ValueError):
+                pass
+
+        uploaded_by = str(filters.get('uploaded_by') or '').strip()
+        if uploaded_by:
+            clauses.append("i.uploaded_by = ?")
+            params.append(uploaded_by)
+
+        reimbursement_status = str(filters.get('reimbursement_status') or '').strip()
+        if reimbursement_status:
+            clauses.append("i.reimbursement_status = ?")
+            params.append(reimbursement_status)
+
+        record_type = str(filters.get('record_type') or '').strip()
+        if record_type in ('invoice', 'manual'):
+            clauses.append("i.record_type = ?")
+            params.append(record_type)
+
+        where_sql = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        return where_sql, params
+
+    def query_invoices(
+        self,
+        filters: Optional[Dict[str, Any]] = None,
+        page: int = 1,
+        page_size: int = 20
+    ) -> Dict[str, Any]:
+        """
+        Query invoices with DB-side filtering, pagination and aggregated stats.
+        """
+        page = max(int(page or 1), 1)
+        page_size = min(max(int(page_size or 20), 1), 100)
+        offset = (page - 1) * page_size
+
+        where_sql, params = self._build_invoice_filters(filters)
+
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+
+            cursor.execute(f"SELECT COUNT(*) FROM invoices i {where_sql}", params)
+            total_count = int(cursor.fetchone()[0] or 0)
+            total_pages = (total_count + page_size - 1) // page_size if total_count else 0
+
+            cursor.execute(
+                f"""
+                SELECT
+                    i.id, i.invoice_number, i.invoice_date, i.item_name, i.amount,
+                    i.remark, i.file_path, i.scan_time, i.pdf_data, i.uploaded_by,
+                    i.reimbursement_person_id, i.reimbursement_status, i.record_type,
+                    COALESCE(v.voucher_count, 0) AS voucher_count
+                FROM invoices i
+                LEFT JOIN (
+                    SELECT invoice_number, COUNT(*) AS voucher_count
+                    FROM expense_vouchers
+                    GROUP BY invoice_number
+                ) v ON i.invoice_number = v.invoice_number
+                {where_sql}
+                ORDER BY i.scan_time DESC
+                LIMIT ? OFFSET ?
+                """,
+                params + [page_size, offset]
+            )
+            rows = cursor.fetchall()
+
+            cursor.execute(
+                f"""
+                SELECT
+                    COALESCE(SUM(CAST(i.amount AS REAL)), 0) AS total_amount,
+                    COALESCE(SUM(CASE WHEN i.record_type = 'invoice' THEN 1 ELSE 0 END), 0) AS invoice_count,
+                    COALESCE(SUM(CASE WHEN i.record_type = 'manual' THEN 1 ELSE 0 END), 0) AS manual_count,
+                    COALESCE(SUM(CASE WHEN i.record_type = 'invoice' THEN CAST(i.amount AS REAL) ELSE 0 END), 0) AS invoice_amount,
+                    COALESCE(SUM(CASE WHEN i.record_type = 'manual' THEN CAST(i.amount AS REAL) ELSE 0 END), 0) AS manual_amount,
+                    COALESCE(SUM(CASE WHEN i.reimbursement_status = '未报销' THEN 1 ELSE 0 END), 0) AS pending_count,
+                    COALESCE(SUM(CASE WHEN i.reimbursement_status = '已报销' THEN 1 ELSE 0 END), 0) AS completed_count
+                FROM invoices i
+                {where_sql}
+                """,
+                params
+            )
+            stats_row = cursor.fetchone()
+
+        invoice_rows = []
+        for row in rows:
+            invoice_rows.append({
+                'invoice': self.deserialize_invoice(row[:13]),
+                'voucher_count': int(row[13] or 0)
+            })
+
+        return {
+            'invoices': invoice_rows,
+            'total_count': total_count,
+            'page': page,
+            'page_size': page_size,
+            'total_pages': total_pages,
+            'total_amount': str(Decimal(str(stats_row[0]))),
+            'invoice_count': int(stats_row[1] or 0),
+            'manual_count': int(stats_row[2] or 0),
+            'invoice_amount': str(Decimal(str(stats_row[3]))),
+            'manual_amount': str(Decimal(str(stats_row[4]))),
+            'pending_count': int(stats_row[5] or 0),
+            'completed_count': int(stats_row[6] or 0)
+        }
     
     def insert_with_pdf(self, invoice: Invoice, pdf_data: bytes) -> None:
         """

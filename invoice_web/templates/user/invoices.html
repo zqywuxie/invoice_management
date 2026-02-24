@@ -1,4 +1,4 @@
-{% extends "user/base_user.html" %}
+﻿{% extends "user/base_user.html" %}
 
 {% block title %}我的发票{% endblock %}
 
@@ -139,6 +139,32 @@
                                     </label>
                                 </div>
                             </div>
+                            <div class="col ms-auto text-end">
+                                <div class="dropdown">
+                                    <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button"
+                                        id="userColumnSettingsBtn" data-bs-toggle="dropdown" aria-expanded="false">
+                                        <i class="bi bi-layout-three-columns me-1"></i>Columns
+                                    </button>
+                                    <div class="dropdown-menu dropdown-menu-end p-3" id="userColumnVisibilityMenu">
+                                        <div class="small text-muted mb-2">显示或隐藏表格列</div>
+                                        <div class="small text-muted mb-2">拖动表头可重新排序,拖动边缘可调整宽度</div>
+                                        <div class="column-checklist">
+                                            <label class="form-check mb-1"><input class="form-check-input user-column-toggle" type="checkbox" data-column="invoice_number" checked> <span class="form-check-label">发票号码</span></label>
+                                            <label class="form-check mb-1"><input class="form-check-input user-column-toggle" type="checkbox" data-column="invoice_date" checked> <span class="form-check-label">开票日期</span></label>
+                                            <label class="form-check mb-1"><input class="form-check-input user-column-toggle" type="checkbox" data-column="item_name" checked> <span class="form-check-label">项目名称</span></label>
+                                            <label class="form-check mb-1"><input class="form-check-input user-column-toggle" type="checkbox" data-column="amount" checked> <span class="form-check-label">金额</span></label>
+                                            <label class="form-check mb-1"><input class="form-check-input user-column-toggle" type="checkbox" data-column="scan_time" checked> <span class="form-check-label">上传时间</span></label>
+                                            <label class="form-check mb-1"><input class="form-check-input user-column-toggle" type="checkbox" data-column="record_type" checked> <span class="form-check-label">记录类型</span></label>
+                                            <label class="form-check mb-1"><input class="form-check-input user-column-toggle" type="checkbox" data-column="reimbursement_status" checked> <span class="form-check-label">报销状态</span></label>
+                                            <label class="form-check mb-0"><input class="form-check-input user-column-toggle" type="checkbox" data-column="voucher" checked> <span class="form-check-label">凭证</span></label>
+                                        </div>
+                                        <div class="d-flex gap-2 mt-2">
+                                            <button class="btn btn-sm btn-outline-secondary" type="button" id="userShowAllColumnsBtn">显示全部</button>
+                                            <button class="btn btn-sm btn-outline-primary" type="button" id="userResetColumnsBtn">重置布局</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -157,19 +183,30 @@
                         <table class="table table-hover mb-0">
                             <thead class="table-light">
                                 <tr>
-                                    <th>发票号码</th>
-                                    <th>开票日期</th>
-                                    <th>项目名称</th>
-                                    <th class="text-end">金额</th>
-                                    <th>上传时间</th>
-                                    <th class="text-center">记录类型</th>
-                                    <th class="text-center">报销状态</th>
-                                    <th class="text-center">凭证</th>
+                                    <th class="col-invoice_number">发票号码</th>
+                                    <th class="col-invoice_date">开票日期</th>
+                                    <th class="col-item_name">项目名称</th>
+                                    <th class="text-end col-amount">金额</th>
+                                    <th class="col-scan_time">上传时间</th>
+                                    <th class="text-center col-record_type">记录类型</th>
+                                    <th class="text-center col-reimbursement_status">报销状态</th>
+                                    <th class="text-center col-voucher">凭证</th>
                                 </tr>
                             </thead>
                             <tbody id="invoice-tbody">
                             </tbody>
                         </table>
+                    </div>
+                    <div class="d-flex justify-content-between align-items-center px-3 py-2 border-top">
+                        <small class="text-muted" id="user-pagination-info">第 1 / 1 页,共 0 条</small>
+                        <div class="btn-group btn-group-sm" role="group" aria-label="User Pagination">
+                            <button class="btn btn-outline-secondary" id="user-pagination-prev" type="button" disabled>
+                                <i class="bi bi-chevron-left"></i> 上一页
+                            </button>
+                            <button class="btn btn-outline-secondary" id="user-pagination-next" type="button" disabled>
+                                下一页 <i class="bi bi-chevron-right"></i>
+                            </button>
+                        </div>
                     </div>
                 </div>
 
@@ -199,7 +236,7 @@
                 <div class="card shadow-sm" id="draft-list-card-invoices">
                     <div class="card-header bg-warning bg-opacity-25">
                         <div class="d-flex justify-content-between align-items-center">
-                            <span><i class="bi bi-hourglass me-2"></i>暂存发票（刷新后需重新上传PDF文件）</span>
+                            <span><i class="bi bi-hourglass me-2"></i>暂存发票(刷新后需重新上传PDF文件)</span>
                             <div>
                                 <button class="btn btn-sm btn-outline-danger" id="clear-drafts-btn">
                                     <i class="bi bi-trash me-1"></i>清空
@@ -266,6 +303,57 @@
     .badge-invoice i,
     .badge-manual i {
         font-size: 0.875rem;
+    }
+
+    #userColumnVisibilityMenu {
+        min-width: 250px;
+    }
+
+    #userColumnVisibilityMenu .column-checklist {
+        max-height: 240px;
+        overflow: auto;
+        padding-right: 0.25rem;
+    }
+
+    #userColumnVisibilityMenu .form-check {
+        white-space: nowrap;
+    }
+
+    #invoice-table-card thead th.user-reorderable-col {
+        position: relative;
+    }
+
+    #invoice-table-card thead th.user-reorderable-col.user-dragging-col {
+        opacity: 0.6;
+    }
+
+    #invoice-table-card thead th.user-reorderable-col.user-drag-over-left {
+        box-shadow: inset 3px 0 0 #0d6efd;
+    }
+
+    #invoice-table-card thead th.user-reorderable-col.user-drag-over-right {
+        box-shadow: inset -3px 0 0 #0d6efd;
+    }
+
+    .user-col-resizer {
+        position: absolute;
+        top: 0;
+        right: -2px;
+        width: 8px;
+        height: 100%;
+        cursor: col-resize;
+        z-index: 8;
+    }
+
+    .user-col-resizer::after {
+        content: '';
+        position: absolute;
+        top: 20%;
+        bottom: 20%;
+        left: 3px;
+        width: 2px;
+        background: rgba(108, 117, 125, 0.25);
+        border-radius: 2px;
     }
 </style>
 {% endblock %}
