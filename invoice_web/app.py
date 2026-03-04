@@ -13,6 +13,7 @@ if project_root not in sys.path:
 
 from flask import Flask
 
+from src.database_factory import create_data_store, describe_backend
 from src.sqlite_data_store import SQLiteDataStore
 from src.invoice_manager import InvoiceManager
 from src.pdf_parser import InvoicePDFParser
@@ -60,9 +61,10 @@ class InvoiceWebApp:
         print(f"[DEBUG] Project root: {project_root}")
         print(f"[DEBUG] Database path: {db_path}")
         print(f"[DEBUG] Database exists: {os.path.exists(db_path)}")
-        
+        print(f"[DEBUG] Database backend: {describe_backend()}")
+
         # Initialize core modules with absolute paths
-        self.data_store = data_store or SQLiteDataStore(db_path)
+        self.data_store = data_store or create_data_store(db_path)
         self.pdf_parser = InvoicePDFParser()
         self.export_service = ExportService()
         
@@ -89,7 +91,7 @@ class InvoiceWebApp:
     
     def _register_routes(self):
         """注册路由"""
-        from flask import render_template, redirect, url_for
+        from flask import render_template, redirect, url_for, jsonify
         from invoice_web.routes import api
         from invoice_web.user_routes import user_bp
         from invoice_web.user_api import user_api
@@ -110,6 +112,10 @@ class InvoiceWebApp:
         @self.app.route('/admin')
         def admin():
             return render_template('index.html')
+
+        @self.app.route('/healthz')
+        def healthz():
+            return jsonify({'status': 'ok'}), 200
     
     def run(self, host='127.0.0.1', port=5000, debug=False):
         """
