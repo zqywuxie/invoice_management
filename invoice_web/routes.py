@@ -6,15 +6,23 @@ Web端电子发票汇总系统 - API路由模块
 import json
 import os
 import tempfile
+from io import BytesIO
 from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from functools import wraps
+from threading import Lock, Thread
+from time import sleep
+import uuid
 from flask import Blueprint, current_app, jsonify, request, send_file, session
 
 from src.models import Invoice
 
 # Create Blueprint for API routes
 api = Blueprint('api', __name__, url_prefix='/api')
+
+USCOA_TASK_LOCK = Lock()
+USCOA_TASKS: dict[str, dict] = {}
+USCOA_TASK_MAX_ITEMS = 50
 
 
 def login_required(f):
@@ -92,6 +100,11 @@ def get_contract_service():
 def get_signature_service():
     """获取签章服务实例"""
     return current_app.config['signature_service']
+
+
+def get_uscoa_automation_service():
+    """Return the OA automation service instance."""
+    return current_app.config['uscoa_automation_service']
 
 
 def invoice_to_dict(invoice: Invoice, voucher_count: int = 0, reimbursement_person_name: str = None) -> dict:
@@ -420,6 +433,30 @@ def get_invoice(invoice_number):
             return jsonify(invoice_to_dict(invoice, voucher_count, person_name))
     
     return jsonify({'success': False, 'message': '发票不存在'}), 404
+
+
+@api.route('/invoices/<invoice_number>/contracts', methods=['GET'])
+@admin_required
+def get_invoice_related_contracts(invoice_number):
+    """Return related contracts for a specific invoice number."""
+    data_store = get_data_store()
+    invoice = data_store.get_invoice_by_number(invoice_number)
+    if not invoice:
+        return jsonify({'success': False, 'message': 'Invoice not found'}), 404
+
+    try:
+        limit = int(request.args.get('limit', 20))
+    except (TypeError, ValueError):
+        limit = 20
+
+    contract_service = get_contract_service()
+    contracts = contract_service.list_contracts_by_invoice_number(invoice_number, limit=limit)
+    return jsonify({
+        'success': True,
+        'invoice_number': invoice_number,
+        'contracts': contracts,
+        'count': len(contracts)
+    })
 
 
 def is_valid_invoice(invoice: Invoice) -> tuple:
@@ -1352,160 +1389,256 @@ def delete_user(user_id):
         return jsonify({'success': False, 'message': '删除失败'}), 500
 
 
-# ========== 合同相关路由 ==========
+# ========== 合同管理 ==========
+
+
+def _is_pdf_upload(uploaded_file) -> bool:
+    if not uploaded_file or not uploaded_file.filename:
+        return False
+    return uploaded_file.filename.lower().endswith('.pdf')
+
 
 @api.route('/invoices/<invoice_number>/contract', methods=['POST'])
 @login_required
 def upload_contract(invoice_number):
-    """
-    上传发票合同
-    
-    Args:
-        invoice_number: 发票号码
-    
-    Form Data:
-        file: 合同文件 (PDF, DOC, DOCX, JPG, PNG)
-    
-    Returns:
-        JSON: 上传结果
-    """
+    """Upload a PDF contract for a specific invoice."""
     if 'file' not in request.files:
-        return jsonify({'success': False, 'message': '未选择文件'}), 400
-    
+        return jsonify({'success': False, 'message': '合同文件不能为空'}), 400
+
     file = request.files['file']
     if file.filename == '':
-        return jsonify({'success': False, 'message': '未选择文件'}), 400
-    
-    # 验证文件格式
-    allowed_extensions = {'pdf', 'doc', 'docx', 'jpg', 'jpeg', 'png'}
-    ext = file.filename.rsplit('.', 1)[-1].lower() if '.' in file.filename else ''
-    if ext not in allowed_extensions:
-        return jsonify({'success': False, 'message': '仅支持PDF、DOC、DOCX、JPG、PNG格式文件'}), 400
-    
+        return jsonify({'success': False, 'message': '合同文件不能为空'}), 400
+
+    if not _is_pdf_upload(file):
+        return jsonify({'success': False, 'message': '仅支持PDF格式合同'}), 400
+
     try:
         contract_service = get_contract_service()
         file_data = file.read()
-        
         success, message, contract = contract_service.upload_contract(
-            invoice_number, file_data, file.filename
+            invoice_number,
+            file_data,
+            file.filename,
+            file.mimetype or 'application/pdf',
         )
-        
-        if success:
-            return jsonify({
-                'success': True,
-                'message': message,
-                'contract': {
-                    'id': contract.id,
-                    'invoice_number': contract.invoice_number,
-                    'original_filename': contract.original_filename,
-                    'upload_time': contract.upload_time.isoformat()
-                }
-            })
-        else:
+        if not success:
             return jsonify({'success': False, 'message': message}), 400
-            
-    except Exception as e:
-        return jsonify({'success': False, 'message': f'上传失败: {str(e)}'}), 500
+
+        metadata = contract_service.get_contract_metadata(invoice_number)
+        return jsonify({
+            'success': True,
+            'message': message,
+            'contract': metadata or {
+                'id': contract.id,
+                'invoice_number': contract.invoice_number,
+                'original_filename': contract.original_filename,
+                'upload_time': contract.upload_time.isoformat(),
+                'content_type': file.mimetype or 'application/pdf',
+                'file_size': len(file_data),
+            },
+        })
+    except Exception as exc:
+        return jsonify({'success': False, 'message': f'合同上传失败: {exc}'}), 500
 
 
 @api.route('/invoices/<invoice_number>/contract', methods=['GET'])
 @login_required
 def get_contract(invoice_number):
-    """
-    获取发票的合同信息
-    
-    Args:
-        invoice_number: 发票号码
-    
-    Returns:
-        JSON: 合同信息
-    """
+    """Get contract metadata for a specific invoice."""
     contract_service = get_contract_service()
-    contract = contract_service.get_contract(invoice_number)
-    
-    if contract:
-        return jsonify({
-            'has_contract': True,
-            'contract': {
-                'id': contract.id,
-                'invoice_number': contract.invoice_number,
-                'original_filename': contract.original_filename,
-                'upload_time': contract.upload_time.isoformat()
-            }
-        })
-    else:
-        return jsonify({'has_contract': False, 'contract': None})
+    metadata = contract_service.get_contract_metadata(invoice_number)
+    if metadata:
+        return jsonify({'has_contract': True, 'contract': metadata})
+    return jsonify({'has_contract': False, 'contract': None})
 
 
 @api.route('/invoices/<invoice_number>/contract/download', methods=['GET'])
 @login_required
-def download_contract(invoice_number):
-    """
-    下载发票合同文件
-    
-    Args:
-        invoice_number: 发票号码
-    
-    Returns:
-        合同文件
-    """
+def download_contract_by_invoice(invoice_number):
+    """Download or preview the contract bound to an invoice."""
     contract_service = get_contract_service()
     result = contract_service.get_contract_file(invoice_number)
-    
     if not result:
         return jsonify({'success': False, 'message': '合同不存在'}), 404
-    
-    file_data, original_filename = result
-    
-    # 确定MIME类型
-    ext = original_filename.rsplit('.', 1)[-1].lower() if '.' in original_filename else ''
-    mimetype_map = {
-        'pdf': 'application/pdf',
-        'doc': 'application/msword',
-        'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        'jpg': 'image/jpeg',
-        'jpeg': 'image/jpeg',
-        'png': 'image/png'
-    }
-    mimetype = mimetype_map.get(ext, 'application/octet-stream')
-    
-    # 创建临时文件用于发送
-    import tempfile
-    temp_dir = tempfile.gettempdir()
-    temp_path = os.path.join(temp_dir, original_filename)
-    with open(temp_path, 'wb') as f:
-        f.write(file_data)
-    
+
+    file_data, original_filename, content_type = result
+    preview = request.args.get('preview', 'false').lower() == 'true'
     return send_file(
-        temp_path,
-        as_attachment=True,
+        BytesIO(file_data),
+        as_attachment=not preview,
         download_name=original_filename,
-        mimetype=mimetype
+        mimetype=content_type or 'application/pdf',
     )
 
 
 @api.route('/invoices/<invoice_number>/contract', methods=['DELETE'])
 @login_required
 def delete_contract(invoice_number):
-    """
-    删除发票合同
-    
-    Args:
-        invoice_number: 发票号码
-    
-    Returns:
-        JSON: 删除结果
-    """
+    """Delete the contract bound to an invoice."""
     contract_service = get_contract_service()
     success, message = contract_service.delete_contract(invoice_number)
-    
     if success:
         return jsonify({'success': True, 'message': message})
-    else:
-        return jsonify({'success': False, 'message': message}), 404
+    return jsonify({'success': False, 'message': message}), 404
 
 
-# ========== 电子签章相关路由 ==========
+@api.route('/contracts', methods=['GET'])
+@admin_required
+def list_contracts():
+    """List contract records for the contract workspace."""
+    contract_service = get_contract_service()
+    search = request.args.get('search', '').strip()
+    try:
+        limit = int(request.args.get('limit', 200))
+    except (TypeError, ValueError):
+        limit = 200
+
+    contracts = contract_service.list_contracts(search=search, limit=limit)
+    return jsonify({'success': True, 'contracts': contracts, 'count': len(contracts)})
+
+
+@api.route('/contracts', methods=['POST'])
+@admin_required
+def create_contract():
+    """Upload a standalone contract record for the admin workspace."""
+    invoice_numbers_raw = (request.form.get('invoice_numbers') or request.form.get('invoice_number') or '').strip()
+    contract_title_raw = (request.form.get('contract_title') or '').strip()
+
+    if 'file' not in request.files:
+        return jsonify({'success': False, 'message': '合同文件不能为空'}), 400
+
+    file = request.files['file']
+    if not file.filename:
+        return jsonify({'success': False, 'message': '合同文件不能为空'}), 400
+
+    if not _is_pdf_upload(file):
+        return jsonify({'success': False, 'message': '仅支持PDF格式合同'}), 400
+
+    contract_service = get_contract_service()
+    contract_tags_raw = (request.form.get('contract_tags') or '').strip()
+    file_data = file.read()
+    success, message, contract = contract_service.create_contract_record(
+        invoice_numbers_raw,
+        file_data,
+        file.filename,
+        contract_tags_raw,
+        contract_title_raw,
+        file.mimetype or 'application/pdf',
+    )
+    if not success:
+        return jsonify({'success': False, 'message': message}), 400
+
+    metadata = contract_service.get_contract_metadata(contract.invoice_number) if contract else None
+    return jsonify({'success': True, 'message': message, 'contract': metadata})
+
+
+@api.route('/contracts/validate-invoices', methods=['POST'])
+@admin_required
+def validate_contract_invoice_numbers():
+    """Validate candidate invoice numbers before contract upload or pairing."""
+    data = request.get_json(silent=True) or {}
+    invoice_numbers = data.get('invoice_numbers', [])
+    contract_service = get_contract_service()
+    preview = contract_service.preview_invoice_numbers(invoice_numbers)
+    return jsonify({'success': True, **preview})
+
+
+@api.route('/contracts/<int:contract_id>/download', methods=['GET'])
+@admin_required
+def download_contract_by_id(contract_id):
+    """Download or preview a contract by id."""
+    contract_service = get_contract_service()
+    result = contract_service.get_contract_file_by_id(contract_id)
+    if not result:
+        return jsonify({'success': False, 'message': '合同不存在'}), 404
+
+    file_data, original_filename, content_type = result
+    preview = request.args.get('preview', 'false').lower() == 'true'
+    return send_file(
+        BytesIO(file_data),
+        as_attachment=not preview,
+        download_name=original_filename,
+        mimetype=content_type or 'application/pdf',
+    )
+
+
+@api.route('/contracts/<int:contract_id>', methods=['GET'])
+@admin_required
+def get_contract_detail(contract_id):
+    """Return contract detail payload for the admin workspace."""
+    contract_service = get_contract_service()
+    detail = contract_service.get_contract_detail(contract_id)
+    if not detail:
+        return jsonify({'success': False, 'message': '合同不存在'}), 404
+    return jsonify({'success': True, 'contract': detail})
+
+
+@api.route('/contracts/<int:contract_id>', methods=['PUT'])
+@admin_required
+def update_contract(contract_id):
+    """Update candidate invoice numbers, title and tags for a contract."""
+    data = request.get_json(silent=True) or {}
+    contract_title = (data.get('contract_title') or '').strip()
+    contract_tags = data.get('contract_tags', '')
+    invoice_numbers = data.get('invoice_numbers', '')
+
+    contract_service = get_contract_service()
+    success, message = contract_service.update_contract_metadata(
+        contract_id,
+        invoice_numbers,
+        contract_title,
+        contract_tags,
+    )
+    if not success:
+        status_code = 404 if message == '合同不存在' else 400
+        return jsonify({'success': False, 'message': message}), status_code
+    return jsonify({'success': True, 'message': message})
+
+
+@api.route('/contracts/<int:contract_id>/links', methods=['GET'])
+@admin_required
+def get_contract_links(contract_id):
+    """Return explicitly linked invoice numbers for a contract."""
+    contract_service = get_contract_service()
+    contract = contract_service.get_contract_by_id(contract_id)
+    if not contract:
+        return jsonify({'success': False, 'message': '合同不存在'}), 404
+
+    invoice_numbers = contract_service.get_contract_links(contract_id)
+    return jsonify({'success': True, 'contract_id': contract_id, 'invoice_numbers': invoice_numbers})
+
+
+@api.route('/contracts/<int:contract_id>/links', methods=['POST'])
+@admin_required
+def update_contract_links(contract_id):
+    """Update linked invoice numbers for a contract."""
+    data = request.get_json(silent=True) or {}
+    invoice_numbers = data.get('invoice_numbers', [])
+
+    contract_service = get_contract_service()
+    success, message, linked, missing = contract_service.set_contract_links(contract_id, invoice_numbers)
+    if not success:
+        status_code = 404 if message == '合同不存在' else 400
+        return jsonify({'success': False, 'message': message, 'missing_invoice_numbers': missing}), status_code
+
+    return jsonify({
+        'success': True,
+        'message': message,
+        'contract_id': contract_id,
+        'invoice_numbers': linked,
+    })
+
+
+@api.route('/contracts/<int:contract_id>', methods=['DELETE'])
+@admin_required
+def delete_contract_by_id(contract_id):
+    """Delete a contract by id."""
+    contract_service = get_contract_service()
+    success, message = contract_service.delete_contract_by_id(contract_id)
+    if success:
+        return jsonify({'success': True, 'message': message})
+    return jsonify({'success': False, 'message': message}), 404
+
 
 @api.route('/invoices/<invoice_number>/signature', methods=['POST'])
 @admin_required
@@ -2020,3 +2153,268 @@ def apply_signature_template(invoice_number):
             
     except (ValueError, TypeError) as e:
         return jsonify({'success': False, 'message': f'参数格式错误: {str(e)}'}), 400
+
+def _parse_uscoa_research_seal_request():
+    if request.is_json:
+        return request.get_json() or {}, []
+
+    data = request.form.to_dict()
+    seal_types = request.form.getlist('seal_types') or request.form.getlist('seal_types[]')
+    if seal_types:
+        data['seal_types'] = seal_types
+    uploaded_files = [item for item in request.files.getlist('attachments') if getattr(item, 'filename', '')]
+    return data, uploaded_files
+
+
+def _uscoa_now():
+    return datetime.now().isoformat(timespec='seconds')
+
+
+def _default_uscoa_steps():
+    return {
+        'login': {'status': 'pending', 'message': '等待执行'},
+        'navigate': {'status': 'pending', 'message': '等待执行'},
+        'open_form': {'status': 'pending', 'message': '等待执行'},
+        'fill_form': {'status': 'pending', 'message': '等待执行'},
+        'save_draft': {'status': 'pending', 'message': '等待执行'},
+        'upload_attachment': {'status': 'pending', 'message': '等待执行'},
+        'complete': {'status': 'pending', 'message': '等待执行'},
+    }
+
+
+def _cleanup_uscoa_tasks_locked():
+    if len(USCOA_TASKS) <= USCOA_TASK_MAX_ITEMS:
+        return
+    sorted_items = sorted(USCOA_TASKS.items(), key=lambda item: item[1].get('updated_at', ''))
+    remove_count = len(USCOA_TASKS) - USCOA_TASK_MAX_ITEMS
+    for index in range(remove_count):
+        USCOA_TASKS.pop(sorted_items[index][0], None)
+
+
+def _create_uscoa_task(payload: dict):
+    task_id = uuid.uuid4().hex
+    now = _uscoa_now()
+    attachments = payload.get('attachments') or []
+    task = {
+        'id': task_id,
+        'status': 'queued',
+        'message': '任务已创建，等待执行',
+        'error': '',
+        'created_at': now,
+        'updated_at': now,
+        'request_preview': {
+            'subject': payload.get('subject', ''),
+            'action': payload.get('action', 'save_draft'),
+            'seal_types': payload.get('seal_types', []),
+            'has_attachments': bool(attachments),
+            'attachment_count': len(attachments),
+        },
+        'steps': _default_uscoa_steps(),
+        'events': [
+            {
+                'time': now,
+                'step': 'complete',
+                'status': 'pending',
+                'message': '任务已入队',
+            }
+        ],
+        'result': None,
+    }
+
+    with USCOA_TASK_LOCK:
+        _cleanup_uscoa_tasks_locked()
+        USCOA_TASKS[task_id] = task
+    return task_id
+
+
+def _set_uscoa_task_step(task_id: str, step: str, status: str, message: str):
+    now = _uscoa_now()
+    with USCOA_TASK_LOCK:
+        task = USCOA_TASKS.get(task_id)
+        if not task:
+            return
+        task['updated_at'] = now
+        if step in task['steps']:
+            task['steps'][step] = {'status': status, 'message': message}
+        task['events'].append({
+            'time': now,
+            'step': step,
+            'status': status,
+            'message': message,
+        })
+
+
+def _set_uscoa_task_status(task_id: str, status: str, message: str = '', error: str = '', result: dict | None = None):
+    now = _uscoa_now()
+    with USCOA_TASK_LOCK:
+        task = USCOA_TASKS.get(task_id)
+        if not task:
+            return
+        task['status'] = status
+        task['message'] = message
+        task['error'] = error
+        task['updated_at'] = now
+        if result is not None:
+            task['result'] = result
+
+
+def _get_uscoa_task_snapshot(task_id: str):
+    with USCOA_TASK_LOCK:
+        task = USCOA_TASKS.get(task_id)
+        if not task:
+            return None
+        return json.loads(json.dumps(task, ensure_ascii=False))
+
+
+def _run_uscoa_research_seal_task(service, task_id: str, payload: dict):
+    action = str(payload.get('action') or 'save_draft')
+    attachments = payload.get('attachments') or []
+    has_attachments = bool(attachments)
+
+    try:
+        _set_uscoa_task_status(task_id, 'running', '任务执行中')
+        staged_steps = [
+            ('login', '正在登录 OA'),
+            ('navigate', '正在进入业务审批菜单'),
+            ('open_form', '正在进入科研事项用印表单'),
+            ('fill_form', '正在填写表单字段'),
+        ]
+        for step, message in staged_steps:
+            _set_uscoa_task_step(task_id, step, 'running', message)
+            sleep(0.35)
+            _set_uscoa_task_step(task_id, step, 'success', f'{message}完成')
+
+        if action == 'save_draft':
+            _set_uscoa_task_step(task_id, 'save_draft', 'running', '正在保存草稿并提交 OA 自动化')
+        else:
+            _set_uscoa_task_step(task_id, 'save_draft', 'skipped', 'fill_only 模式跳过保存草稿')
+
+        if has_attachments:
+            _set_uscoa_task_step(task_id, 'upload_attachment', 'running', '已检测到附件，等待 OA 附件页面上传')
+        else:
+            _set_uscoa_task_step(task_id, 'upload_attachment', 'skipped', '未选择附件，跳过上传')
+
+        _set_uscoa_task_step(task_id, 'complete', 'running', 'OA 自动化脚本执行中')
+        execution = service.run_prepared_research_seal_payload(payload)
+        result_payload = {
+            'message': '已执行 OA 自动填报流程',
+            'request': execution.get('request', {}),
+            'automation': execution.get('automation', {}),
+            'attachment_summary': execution.get('attachment_summary'),
+        }
+
+        automation_result = (result_payload.get('automation') or {}).get('result') or {}
+        action_result = automation_result.get('actionResult') or {}
+        attachment_summary = result_payload.get('attachment_summary') or {}
+
+        if action == 'save_draft':
+            if action_result.get('success') is False:
+                _set_uscoa_task_step(task_id, 'save_draft', 'failed', '保存草稿失败')
+                _set_uscoa_task_step(task_id, 'complete', 'failed', '任务执行失败')
+                _set_uscoa_task_status(
+                    task_id,
+                    'failed',
+                    '任务执行失败',
+                    error='保存草稿失败，请查看 automation 结果',
+                    result=result_payload,
+                )
+                return
+            _set_uscoa_task_step(task_id, 'save_draft', 'success', '保存草稿完成')
+
+        if has_attachments:
+            requested = int(attachment_summary.get('requested_count') or len(attachments))
+            matched = int(attachment_summary.get('matched_count') or 0)
+            if attachment_summary.get('success'):
+                _set_uscoa_task_step(task_id, 'upload_attachment', 'success', f'附件上传成功 ({matched}/{requested})')
+            else:
+                _set_uscoa_task_step(task_id, 'upload_attachment', 'failed', f'附件上传失败 ({matched}/{requested})')
+                _set_uscoa_task_step(task_id, 'complete', 'failed', '任务执行失败')
+                _set_uscoa_task_status(
+                    task_id,
+                    'failed',
+                    '任务执行失败',
+                    error='附件上传未通过校验，请查看附件页产物',
+                    result=result_payload,
+                )
+                return
+
+        _set_uscoa_task_step(task_id, 'complete', 'success', '任务执行完成')
+        _set_uscoa_task_status(task_id, 'success', '任务执行完成', result=result_payload)
+    except Exception as exc:
+        _set_uscoa_task_step(task_id, 'complete', 'failed', str(exc))
+        _set_uscoa_task_status(task_id, 'failed', '任务执行失败', error=str(exc))
+
+
+@api.route('/uscoa/research-seal/meta', methods=['GET'])
+@admin_required
+def get_uscoa_research_seal_meta():
+    """Return metadata for the research seal automation form."""
+    service = get_uscoa_automation_service()
+    metadata = service.get_research_seal_metadata()
+    return jsonify({
+        'success': True,
+        'guide': metadata.get('guide', {}),
+        'form_template': metadata.get('form_template', {}),
+    })
+
+
+@api.route('/uscoa/research-seal/autofill', methods=['POST'])
+@admin_required
+def autofill_uscoa_research_seal():
+    """Trigger the OA research seal autofill flow."""
+    data, uploaded_files = _parse_uscoa_research_seal_request()
+    service = get_uscoa_automation_service()
+
+    try:
+        result = service.autofill_research_seal(data, uploaded_files=uploaded_files)
+    except ValueError as exc:
+        return jsonify({'success': False, 'message': str(exc)}), 400
+    except RuntimeError as exc:
+        return jsonify({'success': False, 'message': str(exc)}), 500
+    except Exception as exc:
+        return jsonify({'success': False, 'message': f'OA autofill failed: {exc}'}), 500
+
+    return jsonify({
+        'success': True,
+        'message': result.get('message', 'OA automation completed'),
+        'request': result.get('request', {}),
+        'automation': result.get('automation', {}),
+        'attachment_summary': result.get('attachment_summary'),
+    })
+
+
+@api.route('/uscoa/research-seal/task-start', methods=['POST'])
+@admin_required
+def start_uscoa_research_seal_task():
+    """Start OA research seal task asynchronously."""
+    data, uploaded_files = _parse_uscoa_research_seal_request()
+    service = get_uscoa_automation_service()
+
+    try:
+        payload = service.build_research_seal_payload(data, uploaded_files=uploaded_files)
+    except ValueError as exc:
+        return jsonify({'success': False, 'message': str(exc)}), 400
+    except Exception as exc:
+        return jsonify({'success': False, 'message': f'任务创建失败: {exc}'}), 500
+
+    task_id = _create_uscoa_task(payload)
+    worker = Thread(
+        target=_run_uscoa_research_seal_task,
+        args=(service, task_id, payload),
+        daemon=True,
+    )
+    worker.start()
+
+    snapshot = _get_uscoa_task_snapshot(task_id) or {}
+    return jsonify({'success': True, 'task': snapshot}), 202
+
+
+@api.route('/uscoa/research-seal/task/<string:task_id>', methods=['GET'])
+@admin_required
+def get_uscoa_research_seal_task(task_id):
+    """Return OA asynchronous task status."""
+    snapshot = _get_uscoa_task_snapshot(task_id)
+    if not snapshot:
+        return jsonify({'success': False, 'message': '任务不存在'}), 404
+    return jsonify({'success': True, 'task': snapshot})
+

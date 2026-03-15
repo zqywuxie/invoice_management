@@ -1,0 +1,504 @@
+{% extends "base.html" %}
+
+{% block page_id %}admin-contracts{% endblock %}
+{% block title %}合同管理 - 电子发票汇总系统{% endblock %}
+
+{% block content %}
+<div class="contract-page">
+    <section class="card contract-hero-card shadow-sm">
+        <div class="card-body">
+            <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
+                <div class="d-flex align-items-start gap-3">
+                    <div class="contract-header-icon">
+                        <i class="bi bi-file-earmark-lock2"></i>
+                    </div>
+                    <div>
+                        <div class="contract-eyebrow">合同管理</div>
+                        <h2 class="contract-hero-title mb-2">合同管理工作台</h2>
+                        <p class="contract-hero-text mb-0">
+                            在这里集中处理合同上传、候选发票整理、正式配对和合同复核。
+                            页面会直接提示候选发票是否已录入，避免提交后才发现编号缺失。
+                        </p>
+                    </div>
+                </div>
+                <div class="d-flex flex-wrap gap-2">
+                    <a class="btn btn-outline-primary" href="{{ url_for('admin') }}">
+                        <i class="bi bi-receipt me-1"></i>返回发票管理
+                    </a>
+                    <button type="button" class="btn btn-outline-secondary" id="refreshContractsBtn">
+                        <i class="bi bi-arrow-clockwise me-1"></i>刷新合同
+                    </button>
+                </div>
+            </div>
+            <div class="row g-3 mt-1 contract-summary-grid">
+                <div class="col-6 col-xl-3">
+                    <div class="contract-summary-card">
+                        <span class="contract-summary-label">合同总数</span>
+                        <strong class="contract-summary-value" id="contractTotalCount">0</strong>
+                        <span class="contract-summary-note" id="contractSummaryHint">最近一次刷新后统计</span>
+                    </div>
+                </div>
+                <div class="col-6 col-xl-3">
+                    <div class="contract-summary-card contract-summary-card-success">
+                        <span class="contract-summary-label">已配对合同</span>
+                        <strong class="contract-summary-value" id="contractPairedCount">0</strong>
+                        <span class="contract-summary-note">至少已关联 1 张发票</span>
+                    </div>
+                </div>
+                <div class="col-6 col-xl-3">
+                    <div class="contract-summary-card contract-summary-card-warning">
+                        <span class="contract-summary-label">待配对合同</span>
+                        <strong class="contract-summary-value" id="contractUnpairedCount">0</strong>
+                        <span class="contract-summary-note">尚未完成正式配对</span>
+                    </div>
+                </div>
+                <div class="col-6 col-xl-3">
+                    <div class="contract-summary-card contract-summary-card-danger">
+                        <span class="contract-summary-label">候选缺失编号</span>
+                        <strong class="contract-summary-value" id="contractMissingCount">0</strong>
+                        <span class="contract-summary-note">在系统里尚未找到的发票编号</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <div class="mt-4">
+        <div class="card shadow-sm contract-list-card">
+            <div class="card-header bg-white">
+                <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
+                    <div>
+                        <div class="contract-section-title mb-1">
+                            <i class="bi bi-journal-text me-2"></i>合同列表
+                        </div>
+                        <div class="text-muted small" id="contractResultSummary">正在加载合同数据</div>
+                    </div>
+                    <div class="d-flex flex-wrap gap-2">
+                        <button type="button" class="btn btn-primary" id="openContractUploadBtn">
+                            <i class="bi bi-cloud-arrow-up me-1"></i>上传合同
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="clearContractFiltersBtn">
+                            <i class="bi bi-x-circle me-1"></i>清空筛选
+                        </button>
+                    </div>
+                </div>
+
+                <div class="row g-3 align-items-center mt-1">
+                    <div class="col-lg-6">
+                        <div class="input-group">
+                            <span class="input-group-text"><i class="bi bi-search"></i></span>
+                            <input type="text" class="form-control" id="contractSearchInput" placeholder="按发票编号、标题、标签或文件名搜索">
+                        </div>
+                    </div>
+                    <div class="col-lg-6">
+                        <div class="d-flex flex-wrap justify-content-lg-end align-items-center gap-2">
+                            <div class="form-check form-switch contract-inline-switch m-0">
+                                <input class="form-check-input" type="checkbox" id="contractMissingOnlyToggle">
+                                <label class="form-check-label small" for="contractMissingOnlyToggle">只看缺失候选编号</label>
+                            </div>
+                            <select class="form-select form-select-sm contract-sort-select" id="contractSortSelect">
+                                <option value="upload_desc">最新上传</option>
+                                <option value="unpaired_first">待配对优先</option>
+                                <option value="missing_desc">缺失候选编号优先</option>
+                                <option value="candidate_desc">候选编号数量优先</option>
+                            </select>
+                            <div class="btn-group contract-pair-filter" role="group" id="contractPairFilter">
+                                <button type="button" class="btn btn-sm btn-outline-secondary active" data-value="all">全部</button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" data-value="paired">已配对</button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" data-value="unpaired">待配对</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="contract-filter-tags mt-3">
+                    <span class="text-muted small">标签筛选</span>
+                    <div class="contract-tag-filter-list" id="contractTagFilterList"></div>
+                </div>
+            </div>
+
+            <div class="card-body pt-2">
+                <div class="table-responsive border rounded">
+                    <table class="table table-hover align-middle mb-0 contract-table">
+                        <thead class="table-light">
+                            <tr>
+                                <th>合同概览</th>
+                                <th>状态</th>
+                                <th>合同标题</th>
+                                <th>标签</th>
+                                <th>文件</th>
+                                <th>上传时间</th>
+                                <th class="text-center actions-col">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="contractTableBody">
+                            <tr>
+                                <td colspan="7" class="text-center text-muted py-5">暂无合同数据</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="contractManagementModal" tabindex="-1" aria-labelledby="contractManagementModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header contract-modal-header">
+                <h5 class="modal-title" id="contractManagementModalLabel">
+                    <i class="bi bi-cloud-arrow-up me-2"></i>上传新合同
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="contract-drop-zone" id="contractDropZone">
+                    <input type="file" class="d-none" id="contractFileInput" accept=".pdf">
+                    <div class="contract-drop-content">
+                        <div class="contract-drop-icon">
+                            <i class="bi bi-file-earmark-pdf"></i>
+                        </div>
+                        <div class="contract-drop-title">拖拽合同 PDF 到这里</div>
+                        <div class="contract-drop-subtitle">或点击选择文件</div>
+                        <div class="contract-drop-hint">仅支持 PDF，标题可自动识别，也可手动覆盖</div>
+                    </div>
+                    <div class="contract-file-info d-none" id="contractFileInfo">
+                        <div class="contract-file-name" id="contractFileName">-</div>
+                        <div class="contract-file-meta" id="contractFileMeta">-</div>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="contractFileClearBtn">
+                            移除文件
+                        </button>
+                    </div>
+                </div>
+
+                <div class="contract-form-grid mt-4">
+                    <div>
+                        <label for="contractTitleInput" class="form-label">合同标题</label>
+                        <input type="text" class="form-control" id="contractTitleInput" placeholder="可不填写，默认自动识别或使用文件名">
+                    </div>
+                    <div>
+                        <label for="contractInvoiceNumbersInput" class="form-label">候选发票编号</label>
+                        <textarea class="form-control" id="contractInvoiceNumbersInput" rows="4" placeholder="支持逗号、中文逗号或换行分隔"></textarea>
+                        <div class="form-text">这里填写的是候选编号，后续仍可在配对窗口中调整。</div>
+                    </div>
+                    <div>
+                        <label for="contractTagEntryInput" class="form-label">分类标签</label>
+                        <div class="contract-tag-input" id="contractTagInput">
+                            <div class="contract-tag-list" id="contractTagList"></div>
+                            <input type="text" class="contract-tag-entry" id="contractTagEntryInput" placeholder="输入标签后回车或逗号确认">
+                            <input type="hidden" id="contractTagsInput">
+                        </div>
+                    </div>
+
+                    <div class="contract-draft-card">
+                        <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap">
+                            <div>
+                                <div class="contract-draft-title">上传前预检</div>
+                                <div class="contract-draft-subtitle" id="contractDraftSummary">尚未填写候选发票编号</div>
+                            </div>
+                            <span class="badge text-bg-light border" id="contractDraftCountBadge">0 个候选编号</span>
+                        </div>
+                        <div class="contract-mini-list mt-3" id="contractDraftInvoiceList">
+                            <div class="contract-mini-empty">候选发票会在这里展示校验结果。</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" id="resetContractFormBtn">重置</button>
+                <button type="button" class="btn btn-primary" id="uploadContractBtn">
+                    <i class="bi bi-cloud-arrow-up me-1"></i>上传合同
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="contractPairModal" tabindex="-1" aria-labelledby="contractPairModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header contract-modal-header">
+                <h5 class="modal-title" id="contractPairModalLabel">
+                    <i class="bi bi-link-45deg me-2"></i>合同配对
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="contract-modal-meta" id="contractPairMeta">正在加载合同信息</div>
+                <div class="row g-3 mt-1">
+                    <div class="col-lg-5">
+                        <div class="contract-side-panel">
+                            <div class="contract-side-panel-title">候选发票编号</div>
+                            <div class="contract-chip-list" id="contractPairCandidateChips">
+                                <span class="contract-chip-muted">暂无候选发票编号</span>
+                            </div>
+                            <div class="contract-side-actions mt-3">
+                                <button type="button" class="btn btn-sm btn-outline-secondary" id="contractPairUseCandidatesBtn">
+                                    <i class="bi bi-arrow-down-circle me-1"></i>使用候选编号
+                                </button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" id="contractPairClearBtn">
+                                    <i class="bi bi-eraser me-1"></i>清空输入
+                                </button>
+                            </div>
+                            <div class="contract-side-note mt-3" id="contractPairCandidates">候选列表会显示在这里</div>
+                        </div>
+                    </div>
+                    <div class="col-lg-7">
+                        <label for="contractPairInvoiceNumbersInput" class="form-label">正式配对发票编号</label>
+                        <textarea class="form-control" id="contractPairInvoiceNumbersInput" rows="6" placeholder="支持逗号、中文逗号或换行分隔"></textarea>
+                        <div class="form-text">只有这里保存的编号才会写入正式配对关系。留空表示清空当前配对。</div>
+
+                        <div class="contract-validation-card mt-3">
+                            <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap">
+                                <div class="contract-side-panel-title mb-0">编号校验</div>
+                                <span class="badge text-bg-light border" id="contractPairValidationBadge">0 个编号</span>
+                            </div>
+                            <div class="contract-validation-summary mt-2" id="contractPairValidationSummary">请输入要配对的发票编号</div>
+                            <div class="contract-mini-list mt-3" id="contractPairValidationList">
+                                <div class="contract-mini-empty">校验结果会在这里展示。</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" id="contractPairSaveBtn">
+                    <i class="bi bi-check-lg me-1"></i>保存配对
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="contractDetailModal" tabindex="-1" aria-labelledby="contractDetailModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header contract-modal-header">
+                <h5 class="modal-title" id="contractDetailModalLabel">
+                    <i class="bi bi-file-earmark-text me-2"></i>合同详情
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row g-3">
+                    <div class="col-lg-4">
+                        <div class="contract-detail-panel h-100">
+                            <div class="contract-detail-heading" id="contractDetailTitle">-</div>
+                            <div class="contract-detail-status mb-3" id="contractDetailStatus">等待加载</div>
+
+                            <div class="contract-detail-block">
+                                <div class="contract-detail-label">标签</div>
+                                <div id="contractDetailTags">-</div>
+                            </div>
+                            <div class="contract-detail-block">
+                                <div class="contract-detail-label">候选发票</div>
+                                <div id="contractDetailCandidates">-</div>
+                            </div>
+                            <div class="contract-detail-block">
+                                <div class="contract-detail-label">已配对发票</div>
+                                <div id="contractDetailLinked">-</div>
+                            </div>
+                            <div class="contract-detail-block">
+                                <div class="contract-detail-label">缺失编号</div>
+                                <div id="contractDetailMissing">-</div>
+                            </div>
+                            <div class="contract-detail-block">
+                                <div class="contract-detail-label">文件名</div>
+                                <div id="contractDetailFilename">-</div>
+                            </div>
+                            <div class="contract-detail-block">
+                                <div class="contract-detail-label">上传时间</div>
+                                <div id="contractDetailUploadTime">-</div>
+                            </div>
+                            <div class="contract-detail-block">
+                                <div class="contract-detail-label">文件大小</div>
+                                <div id="contractDetailFileSize">-</div>
+                            </div>
+
+                            <div class="d-grid gap-2 mt-4">
+                                <a class="btn btn-outline-primary" id="contractDetailDownloadBtn" target="_blank" rel="noopener">
+                                    <i class="bi bi-download me-1"></i>下载合同
+                                </a>
+                                <button class="btn btn-outline-secondary" id="contractDetailEditBtn" type="button">
+                                    <i class="bi bi-pencil-square me-1"></i>编辑信息
+                                </button>
+                                <button class="btn btn-outline-primary" id="contractDetailPairBtn" type="button">
+                                    <i class="bi bi-link-45deg me-1"></i>处理配对
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-lg-8">
+                        <div class="border rounded overflow-hidden mb-3 contract-detail-preview">
+                            <iframe id="contractDetailPreview" title="合同预览" style="width:100%; height: 420px; border:0;"></iframe>
+                        </div>
+
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <div class="contract-detail-list-card">
+                                    <div class="contract-side-panel-title">候选发票详情</div>
+                                    <div class="contract-mini-list mt-3" id="contractDetailCandidateList">
+                                        <div class="contract-mini-empty">暂无候选发票</div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="contract-detail-list-card">
+                                    <div class="contract-side-panel-title">已配对发票详情</div>
+                                    <div class="contract-mini-list mt-3" id="contractDetailLinkedList">
+                                        <div class="contract-mini-empty">暂无已配对发票</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="contractEditModal" tabindex="-1" aria-labelledby="contractEditModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header contract-modal-header">
+                <h5 class="modal-title" id="contractEditModalLabel">
+                    <i class="bi bi-pencil-square me-2"></i>编辑合同
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label for="contractEditTitleInput" class="form-label">合同标题</label>
+                    <input type="text" class="form-control" id="contractEditTitleInput" placeholder="请输入合同标题">
+                </div>
+                <div class="mb-3">
+                    <label for="contractEditTagsInput" class="form-label">分类标签</label>
+                    <input type="text" class="form-control" id="contractEditTagsInput" placeholder="多个标签用逗号分隔">
+                </div>
+                <div class="mb-3">
+                    <label for="contractEditInvoiceNumbersInput" class="form-label">候选发票编号</label>
+                    <textarea class="form-control" id="contractEditInvoiceNumbersInput" rows="4" placeholder="支持逗号、中文逗号或换行分隔"></textarea>
+                    <div class="form-text">编辑的是候选编号，不会自动修改已保存的正式配对关系。</div>
+                </div>
+                <div class="alert alert-danger d-none" id="contractEditError"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" id="contractEditSaveBtn">
+                    <i class="bi bi-check-lg me-1"></i>保存
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="loginModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false"
+    aria-labelledby="loginModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="loginModalLabel">
+                    <i class="bi bi-person-circle me-2"></i>用户登录
+                </h5>
+            </div>
+            <div class="modal-body">
+                <form id="loginForm">
+                    <div class="mb-3">
+                        <label for="loginUsername" class="form-label">用户名</label>
+                        <input type="text" class="form-control" id="loginUsername" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="loginPassword" class="form-label">密码</label>
+                        <input type="password" class="form-control" id="loginPassword" required>
+                    </div>
+                    <div class="alert alert-danger d-none" id="loginError"></div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="submit" form="loginForm" class="btn btn-primary w-100">
+                    <i class="bi bi-box-arrow-in-right me-1"></i>登录
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="userManagementModal" tabindex="-1" aria-labelledby="userManagementModalLabel"
+    aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="userManagementModalLabel">
+                    <i class="bi bi-people me-2"></i>用户管理
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"
+                    aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="userListSection">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h6 class="mb-0">用户列表</h6>
+                        <button class="btn btn-sm btn-primary" onclick="UserManagement.showAddForm()">
+                            <i class="bi bi-plus-lg me-1"></i>添加用户
+                        </button>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-hover table-sm">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>用户名</th>
+                                    <th>显示名称</th>
+                                    <th>角色</th>
+                                    <th>创建时间</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="userListBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div id="userFormSection" class="d-none">
+                    <h6 id="userFormTitle" class="mb-3">添加用户</h6>
+                    <form id="userForm" onsubmit="event.preventDefault(); UserManagement.submitForm();">
+                        <div class="mb-3">
+                            <label for="userFormUsername" class="form-label">用户名 <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="userFormUsername" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="userFormDisplayName" class="form-label">显示名称 <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="userFormDisplayName" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="userFormPassword" class="form-label">密码</label>
+                            <input type="password" class="form-control" id="userFormPassword">
+                            <div class="form-text" id="userFormPasswordHint">密码长度至少 6 位</div>
+                        </div>
+                        <div class="mb-3 form-check">
+                            <input type="checkbox" class="form-check-input" id="userFormIsAdmin">
+                            <label class="form-check-label" for="userFormIsAdmin">管理员权限</label>
+                        </div>
+                        <div class="alert alert-danger d-none" id="userFormError"></div>
+                        <div class="d-flex gap-2">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="bi bi-check-lg me-1"></i>保存
+                            </button>
+                            <button type="button" class="btn btn-secondary" onclick="UserManagement.cancelForm()">
+                                取消
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/contract_page.js') }}"></script>
+{% endblock %}

@@ -58,6 +58,7 @@ class SQLiteDataStore:
         """Apply per-connection pragmas."""
         conn.execute("PRAGMA foreign_keys = ON")
         conn.execute("PRAGMA busy_timeout = 3000")
+        conn.row_factory = sqlite3.Row
     
     def _init_database(self) -> None:
         """创建数据库表结构和索引"""
@@ -169,10 +170,14 @@ class SQLiteDataStore:
                 CREATE TABLE IF NOT EXISTS contracts (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     invoice_number TEXT NOT NULL,
+                    invoice_numbers_text TEXT NOT NULL DEFAULT '',
+                    contract_title TEXT NOT NULL DEFAULT '',
+                    contract_tags_text TEXT NOT NULL DEFAULT '',
                     file_path TEXT NOT NULL,
                     original_filename TEXT NOT NULL,
                     upload_time TEXT NOT NULL,
-                    FOREIGN KEY (invoice_number) REFERENCES invoices(invoice_number)
+                    file_data BLOB,
+                    content_type TEXT DEFAULT 'application/pdf'
                 )
             """)
             
@@ -180,6 +185,28 @@ class SQLiteDataStore:
             cursor.execute("""
                 CREATE INDEX IF NOT EXISTS idx_contract_invoice 
                 ON contracts(invoice_number)
+            """)
+            self._migrate_contracts_table(cursor)
+
+            # Create contract-invoice links table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS contract_invoice_links (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    contract_id INTEGER NOT NULL,
+                    invoice_number TEXT NOT NULL,
+                    created_time TEXT NOT NULL,
+                    FOREIGN KEY (contract_id) REFERENCES contracts(id) ON DELETE CASCADE,
+                    FOREIGN KEY (invoice_number) REFERENCES invoices(invoice_number) ON DELETE CASCADE,
+                    UNIQUE (contract_id, invoice_number)
+                )
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_contract_links_contract
+                ON contract_invoice_links(contract_id)
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_contract_links_invoice
+                ON contract_invoice_links(invoice_number)
             """)
             
             # Create electronic_signatures table
@@ -295,6 +322,107 @@ class SQLiteDataStore:
             cursor.execute("ALTER TABLE invoices ADD COLUMN record_type TEXT DEFAULT 'invoice'")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_record_type ON invoices(record_type)")
     
+    def _migrate_contracts_table(self, cursor: sqlite3.Cursor) -> None:
+        """
+        Migration: normalize the contracts schema for standalone contract management.
+        """
+        cursor.execute("PRAGMA table_info(contracts)")
+        columns = [col[1] for col in cursor.fetchall()]
+
+        if not columns:
+            return
+
+        needs_rebuild = 'invoice_numbers_text' not in columns
+        if needs_rebuild:
+            legacy_file_data_select = "file_data" if 'file_data' in columns else "NULL"
+            legacy_content_type_select = "COALESCE(content_type, 'application/pdf')" if 'content_type' in columns else "'application/pdf'"
+            legacy_title_select = "COALESCE(contract_title, '')" if 'contract_title' in columns else "''"
+            legacy_tags_select = "COALESCE(contract_tags_text, '')" if 'contract_tags_text' in columns else "''"
+            cursor.execute("ALTER TABLE contracts RENAME TO contracts_legacy")
+            cursor.execute("""
+                CREATE TABLE contracts (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    invoice_number TEXT NOT NULL,
+                    invoice_numbers_text TEXT NOT NULL DEFAULT '',
+                    contract_title TEXT NOT NULL DEFAULT '',
+                    contract_tags_text TEXT NOT NULL DEFAULT '',
+                    file_path TEXT NOT NULL,
+                    original_filename TEXT NOT NULL,
+                    upload_time TEXT NOT NULL,
+                    file_data BLOB,
+                    content_type TEXT DEFAULT 'application/pdf'
+                )
+            """)
+            cursor.execute("""
+                INSERT INTO contracts (
+                    id,
+                    invoice_number,
+                    invoice_numbers_text,
+                    contract_title,
+                    contract_tags_text,
+                    file_path,
+                    original_filename,
+                    upload_time,
+                    file_data,
+                    content_type
+                )
+                SELECT
+                    id,
+                    invoice_number,
+                    COALESCE(invoice_number, ''),
+                    {legacy_title_select},
+                    {legacy_tags_select},
+                    file_path,
+                    original_filename,
+                    upload_time,
+                    {legacy_file_data_select},
+                    {legacy_content_type_select}
+                FROM contracts_legacy
+            """.format(
+                legacy_file_data_select=legacy_file_data_select,
+                legacy_content_type_select=legacy_content_type_select,
+                legacy_title_select=legacy_title_select,
+                legacy_tags_select=legacy_tags_select,
+            ))
+            cursor.execute("DROP TABLE contracts_legacy")
+            columns = [
+                'id',
+                'invoice_number',
+                'invoice_numbers_text',
+                'contract_title',
+                'contract_tags_text',
+                'file_path',
+                'original_filename',
+                'upload_time',
+                'file_data',
+                'content_type',
+            ]
+
+        if 'file_data' not in columns:
+            cursor.execute("ALTER TABLE contracts ADD COLUMN file_data BLOB")
+
+        if 'content_type' not in columns:
+            cursor.execute("ALTER TABLE contracts ADD COLUMN content_type TEXT DEFAULT 'application/pdf'")
+
+        if 'contract_title' not in columns:
+            cursor.execute("ALTER TABLE contracts ADD COLUMN contract_title TEXT NOT NULL DEFAULT ''")
+
+        if 'contract_tags_text' not in columns:
+            cursor.execute("ALTER TABLE contracts ADD COLUMN contract_tags_text TEXT NOT NULL DEFAULT ''")
+
+        # Clean legacy admin placeholder in invoice_numbers_text
+        cursor.execute("""
+            UPDATE contracts
+            SET invoice_numbers_text = ''
+            WHERE invoice_numbers_text = invoice_number
+              AND invoice_number LIKE 'ADMIN-CONTRACT-%'
+        """)
+
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_contract_invoice
+            ON contracts(invoice_number)
+        """)
+
     def _create_default_user(self, cursor: sqlite3.Cursor) -> None:
         """创建默认管理员用户"""
         cursor.execute("SELECT COUNT(*) FROM users")
@@ -511,6 +639,10 @@ class SQLiteDataStore:
         """
         with self._get_connection() as conn:
             cursor = conn.cursor()
+            cursor.execute(
+                "DELETE FROM contract_invoice_links WHERE invoice_number = ?",
+                (invoice_number,)
+            )
             cursor.execute(
                 "DELETE FROM invoices WHERE invoice_number = ?",
                 (invoice_number,)
@@ -1033,6 +1165,9 @@ class SQLiteDataStore:
         """
         return (
             contract.invoice_number,
+            contract.invoice_numbers_text or "",
+            contract.contract_title or "",
+            contract.contract_tags_text or "",
             contract.file_path,
             contract.original_filename,
             contract.upload_time.isoformat()
@@ -1049,12 +1184,37 @@ class SQLiteDataStore:
         Returns:
             Contract对象
         """
+        def _row_value(row_obj, key: str, index: int, default=None):
+            try:
+                if hasattr(row_obj, "keys") and key in row_obj.keys():
+                    return row_obj[key]
+            except Exception:
+                pass
+            try:
+                return row_obj[index]
+            except Exception:
+                return default
+
+        upload_time = _row_value(row, "upload_time", 7)
+        if isinstance(upload_time, datetime):
+            parsed_time = upload_time
+        elif isinstance(upload_time, str):
+            parsed_time = datetime.fromisoformat(upload_time)
+        else:
+            try:
+                parsed_time = datetime.fromisoformat(str(upload_time))
+            except Exception:
+                parsed_time = datetime.now()
+
         return Contract(
-            id=row[0],
-            invoice_number=row[1],
-            file_path=row[2],
-            original_filename=row[3],
-            upload_time=datetime.fromisoformat(row[4])
+            id=_row_value(row, "id", 0),
+            invoice_number=_row_value(row, "invoice_number", 1, ""),
+            file_path=_row_value(row, "file_path", 5, ""),
+            original_filename=_row_value(row, "original_filename", 6, ""),
+            upload_time=parsed_time,
+            invoice_numbers_text=_row_value(row, "invoice_numbers_text", 2, "") or "",
+            contract_title=_row_value(row, "contract_title", 3, "") or "",
+            contract_tags_text=_row_value(row, "contract_tags_text", 4, "") or ""
         )
 
     def insert_contract(self, contract: Contract) -> int:
@@ -1072,9 +1232,33 @@ class SQLiteDataStore:
             data = self.serialize_contract(contract)
             cursor.execute("""
                 INSERT INTO contracts 
-                (invoice_number, file_path, original_filename, upload_time)
-                VALUES (?, ?, ?, ?)
+                (invoice_number, invoice_numbers_text, contract_title, contract_tags_text, file_path, original_filename, upload_time)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
             """, data)
+            conn.commit()
+            return cursor.lastrowid
+
+    def insert_contract_with_data(self, contract: Contract, file_data: bytes, content_type: str = "application/pdf") -> int:
+        """
+        Insert contract record with binary file payload.
+        """
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO contracts
+                (invoice_number, invoice_numbers_text, contract_title, contract_tags_text, file_path, original_filename, upload_time, file_data, content_type)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                contract.invoice_number,
+                contract.invoice_numbers_text or "",
+                contract.contract_title or "",
+                contract.contract_tags_text or "",
+                contract.file_path,
+                contract.original_filename,
+                contract.upload_time.isoformat(),
+                file_data,
+                content_type
+            ))
             conn.commit()
             return cursor.lastrowid
 
@@ -1098,6 +1282,170 @@ class SQLiteDataStore:
             if row:
                 return self.deserialize_contract(row)
             return None
+
+    def get_contract_by_id(self, contract_id: int) -> Optional[Contract]:
+        """
+        Get contract by ID.
+        """
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT * FROM contracts WHERE id = ?",
+                (contract_id,)
+            )
+            row = cursor.fetchone()
+            if row:
+                return self.deserialize_contract(row)
+            return None
+
+    def get_contract_data_by_invoice(self, invoice_number: str) -> Optional[tuple]:
+        """
+        Get contract binary data and content type by invoice number.
+        """
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT file_data, content_type FROM contracts WHERE invoice_number = ? ORDER BY upload_time DESC LIMIT 1",
+                (invoice_number,)
+            )
+            row = cursor.fetchone()
+            if row:
+                return row[0], row[1] or "application/pdf"
+            return None
+
+    def get_contract_data_by_id(self, contract_id: int) -> Optional[tuple]:
+        """
+        Get contract binary data and content type by contract ID.
+        """
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT file_data, content_type FROM contracts WHERE id = ?",
+                (contract_id,)
+            )
+            row = cursor.fetchone()
+            if row:
+                return row[0], row[1] or "application/pdf"
+            return None
+
+    def get_all_contracts(self, search: str = "", limit: int = 200) -> List[Contract]:
+        """
+        List contracts ordered by upload time descending.
+        """
+        capped_limit = max(1, min(int(limit or 200), 1000))
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            params: List[Any] = []
+            sql = "SELECT * FROM contracts"
+            if search:
+                sql += " WHERE invoice_number LIKE ? OR invoice_numbers_text LIKE ? OR original_filename LIKE ? OR contract_title LIKE ? OR contract_tags_text LIKE ?"
+                like = f"%{search}%"
+                params.extend([like, like, like, like, like])
+            sql += " ORDER BY upload_time DESC LIMIT ?"
+            params.append(capped_limit)
+            cursor.execute(sql, tuple(params))
+            rows = cursor.fetchall()
+            return [self.deserialize_contract(row) for row in rows]
+
+    def get_contract_records(self, search: str = "", limit: int = 200) -> List[Dict[str, Any]]:
+        """
+        List contract records with metadata for management view.
+        """
+        capped_limit = max(1, min(int(limit or 200), 1000))
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            params: List[Any] = []
+            sql = """
+                SELECT
+                    id,
+                    invoice_number,
+                    invoice_numbers_text,
+                    contract_title,
+                    contract_tags_text,
+                    original_filename,
+                    upload_time,
+                    content_type,
+                    LENGTH(file_data) AS file_size
+                FROM contracts
+            """
+            if search:
+                sql += """
+                    WHERE invoice_number LIKE ?
+                    OR invoice_numbers_text LIKE ?
+                    OR original_filename LIKE ?
+                    OR contract_title LIKE ?
+                    OR contract_tags_text LIKE ?
+                    OR id IN (
+                        SELECT DISTINCT contract_id
+                        FROM contract_invoice_links
+                        WHERE invoice_number LIKE ?
+                    )
+                """
+                like = f"%{search}%"
+                params.extend([like, like, like, like, like, like])
+            sql += " ORDER BY upload_time DESC LIMIT ?"
+            params.append(capped_limit)
+            cursor.execute(sql, tuple(params))
+            rows = cursor.fetchall()
+            return [
+                {
+                    "id": row[0],
+                    "invoice_number": row[1],
+                    "invoice_numbers_text": row[2] or "",
+                    "contract_title": row[3] or "",
+                    "contract_tags_text": row[4] or "",
+                    "original_filename": row[5],
+                    "upload_time": row[6],
+                    "content_type": row[7] or "application/pdf",
+                    "file_size": int(row[8] or 0),
+                }
+                for row in rows
+            ]
+
+    def get_contract_links_map(self, contract_ids: List[int]) -> Dict[int, List[str]]:
+        if not contract_ids:
+            return {}
+
+        placeholders = ",".join("?" for _ in contract_ids)
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                f"""
+                SELECT contract_id, invoice_number
+                FROM contract_invoice_links
+                WHERE contract_id IN ({placeholders})
+                ORDER BY contract_id ASC, created_time ASC
+                """,
+                tuple(contract_ids)
+            )
+            rows = cursor.fetchall()
+
+        result: Dict[int, List[str]] = {}
+        for contract_id, invoice_number in rows:
+            result.setdefault(int(contract_id), []).append(invoice_number)
+        return result
+
+    def update_contract_metadata(
+        self,
+        contract_id: int,
+        invoice_numbers_text: str,
+        contract_title: str,
+        contract_tags_text: str
+    ) -> bool:
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                UPDATE contracts
+                SET invoice_numbers_text = ?,
+                    contract_title = ?,
+                    contract_tags_text = ?
+                WHERE id = ?
+                """,
+                (invoice_numbers_text or "", contract_title or "", contract_tags_text or "", contract_id),
+            )
+            conn.commit()
+            return cursor.rowcount > 0
 
     def delete_contract(self, contract_id: int) -> bool:
         """
@@ -1136,6 +1484,89 @@ class SQLiteDataStore:
             )
             conn.commit()
             return cursor.rowcount
+
+    def get_contract_links(self, contract_id: int) -> List[str]:
+        """
+        List linked invoice numbers for a contract.
+        """
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT invoice_number FROM contract_invoice_links WHERE contract_id = ? ORDER BY created_time ASC",
+                (contract_id,)
+            )
+            rows = cursor.fetchall()
+            return [row[0] for row in rows]
+
+    def replace_contract_links(self, contract_id: int, invoice_numbers: List[str]) -> None:
+        """
+        Replace linked invoices for a contract.
+        """
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "DELETE FROM contract_invoice_links WHERE contract_id = ?",
+                (contract_id,)
+            )
+            if invoice_numbers:
+                created_time = datetime.now().isoformat()
+                data = [(contract_id, invoice_number, created_time) for invoice_number in invoice_numbers]
+                cursor.executemany(
+                    "INSERT INTO contract_invoice_links (contract_id, invoice_number, created_time) VALUES (?, ?, ?)",
+                    data
+                )
+            conn.commit()
+
+    def delete_contract_links_by_contract(self, contract_id: int) -> int:
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "DELETE FROM contract_invoice_links WHERE contract_id = ?",
+                (contract_id,)
+            )
+            conn.commit()
+            return cursor.rowcount
+
+    def delete_contract_links_by_invoice(self, invoice_number: str) -> int:
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "DELETE FROM contract_invoice_links WHERE invoice_number = ?",
+                (invoice_number,)
+            )
+            conn.commit()
+            return cursor.rowcount
+
+    def get_existing_invoice_numbers(self, invoice_numbers: List[str]) -> List[str]:
+        if not invoice_numbers:
+            return []
+        placeholders = ",".join("?" for _ in invoice_numbers)
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                f"SELECT invoice_number FROM invoices WHERE invoice_number IN ({placeholders})",
+                tuple(invoice_numbers)
+            )
+            rows = cursor.fetchall()
+            return [row[0] for row in rows]
+
+    def get_contract_link_counts(self, contract_ids: List[int]) -> Dict[int, int]:
+        if not contract_ids:
+            return {}
+        placeholders = ",".join("?" for _ in contract_ids)
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                f"""
+                SELECT contract_id, COUNT(*)
+                FROM contract_invoice_links
+                WHERE contract_id IN ({placeholders})
+                GROUP BY contract_id
+                """,
+                tuple(contract_ids)
+            )
+            rows = cursor.fetchall()
+            return {int(row[0]): int(row[1]) for row in rows}
 
     # ========== 电子签章相关方法 ==========
 

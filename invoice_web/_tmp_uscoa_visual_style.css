@@ -1,0 +1,84 @@
+body {
+  background: linear-gradient(180deg, #f8fafc 0%, #eef2ff 100%);
+}
+
+.app-shell {
+  max-width: 1400px;
+}
+
+.stamp-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 0.5rem;
+}
+
+.stamp-item {
+  border: 1px solid #dbeafe;
+  border-radius: 0.6rem;
+  padding: 0.45rem 0.6rem;
+  background: #fff;
+}
+
+.step-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.step-item {
+  border: 1px solid #dbeafe;
+  border-radius: 0.65rem;
+  padding: 0.55rem 0.7rem;
+  margin-bottom: 0.45rem;
+  background: #fff;
+}
+
+.step-item:last-child {
+  margin-bottom: 0;
+}
+
+.step-item.pending {
+  border-color: #dbeafe;
+}
+
+.step-item.running {
+  border-color: #f59e0b;
+  background: #fffbeb;
+}
+
+.step-item.success {
+  border-color: #86efac;
+  background: #f0fdf4;
+}
+
+.step-item.failed {
+  border-color: #fca5a5;
+  background: #fef2f2;
+}
+
+.code-box {
+  margin: 0;
+  min-height: 130px;
+  border-radius: 0.75rem;
+  padding: 0.8rem;
+  font-size: 0.8rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: #0f172a;
+  color: #dbeafe;
+}
+
+.artifact-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.artifact-list li {
+  border-bottom: 1px dashed #e2e8f0;
+  padding: 0.5rem 0;
+}
+
+.artifact-list li:last-child {
+  border-bottom: 0;
+}

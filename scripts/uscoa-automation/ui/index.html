@@ -1,0 +1,344 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>科研事项用印工作台</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <main class="app-shell">
+    <header class="hero panel-surface">
+      <div class="hero-copy">
+        <p class="eyebrow">Research Seal Workspace</p>
+        <h1>科研事项用印工作台</h1>
+        <p class="subtitle">左侧直接填写自动回填参数，右侧实时监控浏览器状态、页面变化和执行日志，不再只依赖截图。</p>
+      </div>
+
+      <div class="hero-side">
+        <div class="status-row">
+          <span id="serverTime" class="meta-pill">服务器时间: -</span>
+          <span id="runState" class="badge idle">空闲</span>
+        </div>
+        <p id="messageBar" class="message info">工作台已就绪。</p>
+        <div class="toolbar-row">
+          <button id="refreshStatusBtn" class="btn ghost" type="button">刷新状态</button>
+          <button id="stopRunBtn" class="btn danger" type="button" disabled>停止任务</button>
+        </div>
+      </div>
+    </header>
+
+    <section class="summary-strip">
+      <article class="summary-card panel-surface">
+        <span class="summary-label">配置状态</span>
+        <strong id="summaryConfigValue" class="summary-value">待完善</strong>
+        <span id="summaryConfigMeta" class="summary-meta">账号、密码和入口地址需要补齐</span>
+      </article>
+      <article class="summary-card panel-surface">
+        <span class="summary-label">会话状态</span>
+        <strong id="summarySessionValue" class="summary-value">未缓存</strong>
+        <span id="summarySessionMeta" class="summary-meta">当前没有可复用会话</span>
+      </article>
+      <article class="summary-card panel-surface">
+        <span class="summary-label">老师说明</span>
+        <strong id="summaryTeacherValue" class="summary-value">0</strong>
+        <span id="summaryTeacherMeta" class="summary-meta">尚未读取相关老师信息</span>
+      </article>
+      <article class="summary-card panel-surface">
+        <span class="summary-label">实时监控</span>
+        <strong id="summaryMonitorValue" class="summary-value">离线</strong>
+        <span id="summaryMonitorMeta" class="summary-meta">尚未接收到浏览器状态</span>
+      </article>
+    </section>
+
+    <section class="main-grid">
+      <section class="left-column">
+        <article class="panel panel-surface">
+          <div class="panel-head">
+            <div>
+              <p class="section-kicker">更多面板</p>
+              <h2>弹窗设置</h2>
+            </div>
+            <span class="hint">辅助信息和配置改为按需展开</span>
+          </div>
+
+          <div class="action-grid">
+            <button id="openTeacherModalBtn" class="btn ghost" type="button">辅助信息</button>
+            <button id="openConfigModalBtn" class="btn ghost" type="button">系统配置</button>
+          </div>
+        </article>
+
+        <article class="panel panel-surface">
+          <div class="panel-head">
+            <div>
+              <p class="section-kicker">流程操作</p>
+              <h2>快速执行</h2>
+            </div>
+            <span class="hint">只保留核心入口</span>
+          </div>
+
+          <div class="action-grid action-grid-compact">
+            <button class="btn primary" type="button" data-action="login">登录系统</button>
+            <button class="btn primary" type="button" data-action="open-research-seal-form">直接进入表单</button>
+          </div>
+        </article>
+
+        <article class="panel panel-surface">
+          <div class="panel-head">
+            <div>
+              <p class="section-kicker">自动填写</p>
+              <h2>表单参数</h2>
+            </div>
+            <span id="autofillMeta" class="hint">填写后可直接触发自动回填</span>
+          </div>
+
+          <form id="autofillForm" class="autofill-form">
+            <div class="config-grid">
+              <label class="wide-field">
+                <span>文件标题 / 用印内容</span>
+                <input id="subjectInput" placeholder="例如：科研项目申请材料用印">
+              </label>
+
+              <label class="wide-field">
+                <span>事项说明</span>
+                <textarea id="descriptionInput" rows="5" placeholder="简要说明用印用途、课题信息、经费情况等"></textarea>
+              </label>
+
+              <label>
+                <span>联系电话</span>
+                <input id="phoneInput" placeholder="请输入联系电话">
+              </label>
+
+              <label>
+                <span>合同金额</span>
+                <input id="contractAmountInput" placeholder="未选择合同用印可留空">
+              </label>
+
+              <label class="wide-field">
+                <span>备注</span>
+                <input id="remarkInput" placeholder="没有可留空">
+              </label>
+
+              <label class="wide-field">
+                <span>用印类别</span>
+                <div id="sealTypeList" class="seal-type-list"></div>
+              </label>
+
+              <label>
+                <span>执行方式</span>
+                <select id="actionInput">
+                  <option value="save_draft">保存草稿</option>
+                  <option value="fill_only">仅填写，不保存</option>
+                </select>
+              </label>
+
+              <label class="wide-field">
+                <span>合同附件</span>
+                <input
+                  id="attachmentsInput"
+                  type="file"
+                  multiple
+                  accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.jpg,.jpeg,.png,.zip,.rar,.7z">
+                <div class="attachment-field-meta">
+                  <span id="attachmentsMeta" class="hint">直接选择本地文件即可，系统会先保存草稿，再进入 OA 附件页上传。</span>
+                  <span id="attachmentsSelected" class="hint">未选择附件</span>
+                </div>
+              </label>
+            </div>
+
+            <div class="form-actions">
+              <div class="autofill-action-group">
+                <button id="autofillSubmitBtn" class="btn primary" type="submit">自动填写表单</button>
+                <p id="autofillStatus" class="autofill-status" aria-live="polite">请填写后点击“自动填写表单”。</p>
+              </div>
+              <span class="hint">会自动登录、进入科研事项用印、通过温馨提示并填写表单；如选择附件，会自动点表单顶部“附件”进入上传。</span>
+            </div>
+          </form>
+        </article>
+      </section>
+
+      <aside class="right-column">
+        <article class="panel panel-surface monitor-panel">
+          <div class="panel-head">
+            <div>
+              <p class="section-kicker">浏览器监控</p>
+              <h2>实时状态</h2>
+            </div>
+            <span id="pageStageBadge" class="stage-badge pending">等待开始</span>
+          </div>
+
+          <div class="monitor-overview">
+            <div class="monitor-card">
+              <span class="fact-label">当前阶段</span>
+              <strong id="pageStageText">等待开始</strong>
+              <p id="browserCurrentMessage" class="hint">暂无浏览器运行信息</p>
+            </div>
+            <div class="monitor-card">
+              <span class="fact-label">最近更新</span>
+              <strong id="browserUpdatedAt">-</strong>
+              <p id="browserActionText" class="hint">动作: -</p>
+            </div>
+          </div>
+
+          <div class="monitor-section">
+            <div class="monitor-section-head">
+              <h3>实时页面预览</h3>
+              <span id="livePreviewMeta" class="hint">尚未接收到实时画面</span>
+            </div>
+            <img id="livePreviewImage" class="live-preview-image" alt="live browser preview">
+            <div id="livePreviewEmpty" class="empty-state">当前没有可展示的实时页面画面。</div>
+          </div>
+
+          <div class="monitor-section">
+            <div class="monitor-section-head">
+              <h3>当前活动页面</h3>
+              <span id="browserPageCount" class="hint">0 个页面</span>
+            </div>
+            <div class="active-page-card">
+              <strong id="browserActivePageTitle">暂无页面</strong>
+              <p id="browserPageStateText" class="hint">等待浏览器状态上报。</p>
+            </div>
+          </div>
+
+          <div class="monitor-section">
+            <div class="monitor-section-head">
+              <h3>业务面板</h3>
+              <span class="hint">通知公告在左，待办待阅在右</span>
+            </div>
+            <div class="monitor-side-grid">
+              <section class="feed-card">
+                <div class="monitor-section-head">
+                  <h3>通知公告</h3>
+                  <span id="browserNoticeMeta" class="hint">0 条</span>
+                </div>
+                <div id="browserNoticeList" class="feed-list"></div>
+              </section>
+              <section class="feed-card">
+                <div class="monitor-section-head">
+                  <h3>待办待阅</h3>
+                  <span id="browserTodoMeta" class="hint">0 条</span>
+                </div>
+                <div id="browserTodoList" class="feed-list"></div>
+              </section>
+            </div>
+          </div>
+
+          <details class="advanced-panel compact-panel">
+            <summary>页面结构详情</summary>
+
+            <div class="monitor-section">
+              <div class="monitor-section-head">
+                <h3>已跟踪页面</h3>
+                <span class="hint">调试时再展开查看</span>
+              </div>
+              <div id="browserPageList" class="page-list"></div>
+            </div>
+
+            <div class="monitor-section">
+              <div class="monitor-section-head">
+                <h3>页面可见按钮</h3>
+                <span class="hint">从当前活动页面实时提取</span>
+              </div>
+              <div id="browserVisibleButtons" class="chip-list"></div>
+            </div>
+
+            <div class="monitor-section">
+              <div class="monitor-section-head">
+                <h3>输入框摘要</h3>
+                <span class="hint">帮助判断当前页面结构和填写进度</span>
+              </div>
+              <div id="browserVisibleInputs" class="input-summary-list"></div>
+            </div>
+          </details>
+        </article>
+      </aside>
+    </section>
+  </main>
+
+  <dialog id="teacherModal" class="modal-shell">
+    <article class="modal-card panel-surface">
+      <div class="panel-head">
+        <div>
+          <p class="section-kicker">辅助信息</p>
+          <h2>相关老师与提示</h2>
+        </div>
+        <div class="toolbar-row">
+          <span id="teacherGuideState" class="hint">未加载</span>
+          <button class="btn ghost" type="button" data-close-dialog="teacherModal">关闭</button>
+        </div>
+      </div>
+
+      <div class="teacher-toolbar">
+        <input id="teacherSearchInput" placeholder="按老师或分类筛选">
+        <div id="selectedTeacherCard" class="selected-teacher empty">尚未选择老师</div>
+      </div>
+      <div id="teacherList" class="teacher-list"></div>
+      <div id="teacherNotes" class="teacher-notes"></div>
+    </article>
+  </dialog>
+
+  <dialog id="configModal" class="modal-shell">
+    <article class="modal-card panel-surface">
+      <div class="panel-head">
+        <div>
+          <p class="section-kicker">配置</p>
+          <h2>必要参数</h2>
+        </div>
+        <div class="toolbar-row">
+          <button id="reloadConfigBtn" class="btn ghost" type="button">重新加载</button>
+          <button class="btn ghost" type="button" data-close-dialog="configModal">关闭</button>
+        </div>
+      </div>
+
+      <form id="configForm" class="config-form">
+        <div class="config-grid">
+          <label>
+            <span>账号</span>
+            <input id="cfgUsername" name="USCOA_USERNAME" autocomplete="off">
+          </label>
+          <label>
+            <span>密码</span>
+            <div class="input-with-button">
+              <input id="cfgPassword" name="USCOA_PASSWORD" type="password" autocomplete="off">
+              <button id="togglePasswordBtn" class="btn ghost compact" type="button">显示</button>
+            </div>
+          </label>
+          <label class="wide-field">
+            <span>入口 URL</span>
+            <input id="cfgUrl" name="USCOA_URL" autocomplete="off">
+          </label>
+          <label>
+            <span>超时(毫秒)</span>
+            <input id="cfgTimeout" name="USCOA_TIMEOUT_MS" autocomplete="off">
+          </label>
+          <label>
+            <span>默认可视化</span>
+            <select id="cfgHeadful" name="USCOA_HEADFUL">
+              <option value="0">0</option>
+              <option value="1">1</option>
+            </select>
+          </label>
+          <label>
+            <span>复用会话</span>
+            <select id="cfgReuse" name="USCOA_REUSE_SESSION">
+              <option value="1">1</option>
+              <option value="0">0</option>
+            </select>
+          </label>
+        </div>
+        <input id="cfgTargetUrl" name="USCOA_TARGET_URL" type="hidden">
+        <input id="cfgMenuText" name="USCOA_MENU_TEXT" type="hidden">
+        <input id="cfgBrowserPath" name="USCOA_BROWSER_PATH" type="hidden">
+        <input id="cfgRemember" name="USCOA_REMEMBER_ME" type="hidden" value="0">
+
+        <div class="form-actions">
+          <button class="btn primary" type="submit">保存 .env</button>
+          <span id="configHint" class="hint">尚未加载配置</span>
+        </div>
+      </form>
+    </article>
+  </dialog>
+
+  <script src="/app.js"></script>
+</body>
+</html>

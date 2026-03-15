@@ -11,6 +11,9 @@ project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
+from src.env_loader import get_loaded_env_file, load_project_env
+load_project_env(project_root)
+
 from flask import Flask
 
 from src.database_factory import create_data_store, describe_backend
@@ -23,6 +26,7 @@ from src.docx_export_service import DocxExportService
 from src.reimbursement_person_service import ReimbursementPersonService
 from src.contract_service import ContractService
 from src.signature_service import SignatureService
+from src.uscoa_automation_service import USCOAAutomationService
 
 
 class InvoiceWebApp:
@@ -59,6 +63,7 @@ class InvoiceWebApp:
         
         # Log the database path for debugging
         print(f"[DEBUG] Project root: {project_root}")
+        print(f"[DEBUG] Env file: {get_loaded_env_file() or 'none'}")
         print(f"[DEBUG] Database path: {db_path}")
         print(f"[DEBUG] Database exists: {os.path.exists(db_path)}")
         print(f"[DEBUG] Database backend: {describe_backend()}")
@@ -74,6 +79,7 @@ class InvoiceWebApp:
         self.reimbursement_person_service = ReimbursementPersonService(self.data_store)
         self.contract_service = ContractService(self.data_store, contract_dir)
         self.signature_service = SignatureService(self.data_store, signature_dir)
+        self.uscoa_automation_service = USCOAAutomationService(project_root)
         
         # Store references in app config for access in routes
         self.app.config['data_store'] = self.data_store
@@ -85,13 +91,14 @@ class InvoiceWebApp:
         self.app.config['reimbursement_person_service'] = self.reimbursement_person_service
         self.app.config['contract_service'] = self.contract_service
         self.app.config['signature_service'] = self.signature_service
+        self.app.config['uscoa_automation_service'] = self.uscoa_automation_service
         
         # Register routes
         self._register_routes()
     
     def _register_routes(self):
         """注册路由"""
-        from flask import render_template, redirect, url_for, jsonify
+        from flask import render_template, redirect, url_for, jsonify, session
         from invoice_web.routes import api
         from invoice_web.user_routes import user_bp
         from invoice_web.user_api import user_api
@@ -112,6 +119,28 @@ class InvoiceWebApp:
         @self.app.route('/admin')
         def admin():
             return render_template('index.html')
+
+        @self.app.route('/admin/contracts')
+        def admin_contracts():
+            return render_template('contracts.html')
+
+        @self.app.route('/admin/uscoa')
+        def admin_uscoa():
+            user = session.get('user')
+            if not user:
+                return redirect(url_for('user.login'))
+            if not user.get('is_admin', False):
+                return redirect(url_for('admin'))
+            return render_template('uscoa_automation.html')
+
+        @self.app.route('/admin/uscoa/simple')
+        def admin_uscoa_simple():
+            user = session.get('user')
+            if not user:
+                return redirect(url_for('user.login'))
+            if not user.get('is_admin', False):
+                return redirect(url_for('admin'))
+            return render_template('uscoa_automation_simple.html')
 
         @self.app.route('/healthz')
         def healthz():

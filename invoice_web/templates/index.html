@@ -1,5 +1,7 @@
 {% extends "base.html" %}
 
+{% block page_id %}admin-invoices{% endblock %}
+
 {% block title %}发票列表 - 电子发票汇总系统{% endblock %}
 
 {% block content %}
@@ -64,9 +66,14 @@
                 </div>
                 <div class="row mt-3">
                     <div class="col-12 text-end">
-                        <button class="btn btn-primary" id="uploadBtn">
-                            <i class="bi bi-upload me-1"></i>上传发票
-                        </button>
+                        <div class="btn-group">
+                            <a class="btn btn-outline-danger" href="{{ url_for('admin_contracts') }}">
+                                <i class="bi bi-file-earmark-lock2 me-1"></i>合同管理
+                            </a>
+                            <button class="btn btn-primary" id="uploadBtn">
+                                <i class="bi bi-upload me-1"></i>上传发票
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -431,6 +438,22 @@
                     </div>
                 </div>
 
+                <div class="invoice-related-contracts-section mb-4">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h6 class="mb-0">
+                            <i class="bi bi-file-earmark-lock2 me-2"></i>关联合同
+                            <span class="badge bg-secondary ms-2" id="detailRelatedContractsCount">0</span>
+                        </h6>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="openInvoiceContractsPanelBtn">
+                            <i class="bi bi-box-arrow-up-right me-1"></i>进入合同管理
+                        </button>
+                    </div>
+                    <div id="detailRelatedContracts" class="invoice-related-contracts-list">
+                        <div class="invoice-related-empty">正在加载关联合同...</div>
+                    </div>
+                </div>
+                </div>
+
                 <!-- Voucher Gallery Section -->
                 <hr class="my-3">
                 <div class="voucher-section">
@@ -451,8 +474,10 @@
                         <p class="mb-0 mt-2">暂无支出凭证</p>
                     </div>
                 </div>
-            </div>
-            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" id="openInvoiceContractsBtn">
+                    <i class="bi bi-file-earmark-lock2 me-1"></i>查看关联合同
+                </button>
+                </button>
                 <button type="button" class="btn btn-outline-success" id="exportDocxBtn">
                     <i class="bi bi-file-earmark-word me-1"></i>导出DOCX
                 </button>
@@ -967,4 +992,5 @@
         </div>
     </div>
 </div>
+
 {% endblock %}

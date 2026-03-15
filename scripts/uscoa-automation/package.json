@@ -1,0 +1,22 @@
+﻿{
+    "name":  "uscoa-automation",
+    "version":  "1.0.0",
+    "description":  "Automation starter for the University of South China OA portal",
+    "main":  "uscoa-login.js",
+    "scripts":  {
+                    "probe":  "node uscoa-login.js --probe",
+                    "login":  "node uscoa-login.js",
+                    "login:headful":  "node uscoa-login.js --headful",
+                    "ui":  "node ui-server.js"
+                },
+    "keywords":  [
+
+                 ],
+    "author":  "",
+    "license":  "ISC",
+    "type":  "commonjs",
+    "dependencies":  {
+                         "playwright-core":  "^1.58.2"
+                     }
+}
+

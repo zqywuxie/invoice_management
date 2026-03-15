@@ -22,8 +22,11 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
+from src.env_loader import load_project_env
 from src.postgres_data_store import PostgreSQLDataStore
 from src.sqlite_data_store import SQLiteDataStore
+
+load_project_env(PROJECT_ROOT)
 
 
 TABLE_COLUMNS: Dict[str, List[str]] = {

@@ -43,6 +43,7 @@ invoice_web/data/vouchers/
 # Temporary files
 *.log
 *.tmp
+tmp*/
 test_*.db
 test_output.txt
 TASK*_VERIFICATION_SUMMARY.md
@@ -52,5 +53,8 @@ TASK*_VERIFICATION_SUMMARY.md
 
 # Environment
 .env
+.env.local
+.env.server
+.env.production
 venv/
 env/

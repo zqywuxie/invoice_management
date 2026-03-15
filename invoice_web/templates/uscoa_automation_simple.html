@@ -1,0 +1,246 @@
+{% extends "base.html" %}
+
+{% block page_id %}admin-uscoa-simple{% endblock %}
+{% block title %}OA 自动填报可视化 - 电子发票汇总系统{% endblock %}
+
+{% block extra_css %}
+<style>
+    .simple-uscoa .hero-card {
+        border: 0;
+        background: linear-gradient(135deg, #f8fbff 0%, #ecfeff 100%);
+    }
+
+    .simple-uscoa .step-list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+    }
+
+    .simple-uscoa .step-item {
+        border: 1px solid #dbeafe;
+        border-radius: 0.9rem;
+        padding: 0.8rem 0.9rem;
+        margin-bottom: 0.7rem;
+        background: #ffffff;
+    }
+
+    .simple-uscoa .step-item:last-child {
+        margin-bottom: 0;
+    }
+
+    .simple-uscoa .step-item.is-pending {
+        border-color: #dbeafe;
+    }
+
+    .simple-uscoa .step-item.is-running {
+        border-color: #f59e0b;
+        background: #fffbeb;
+    }
+
+    .simple-uscoa .step-item.is-success {
+        border-color: #86efac;
+        background: #f0fdf4;
+    }
+
+    .simple-uscoa .step-item.is-failed {
+        border-color: #fca5a5;
+        background: #fef2f2;
+    }
+
+    .simple-uscoa .step-item.is-skipped {
+        border-color: #e5e7eb;
+        background: #f9fafb;
+    }
+
+    .simple-uscoa .step-title {
+        font-weight: 600;
+    }
+
+    .simple-uscoa .run-log,
+    .simple-uscoa .result-json {
+        border-radius: 0.9rem;
+        padding: 0.8rem;
+        margin: 0;
+        font-size: 0.82rem;
+        white-space: pre-wrap;
+        word-break: break-word;
+    }
+
+    .simple-uscoa .run-log {
+        min-height: 180px;
+        background: #111827;
+        color: #c7d2fe;
+    }
+
+    .simple-uscoa .result-json {
+        min-height: 260px;
+        background: #0f172a;
+        color: #dbeafe;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="simple-uscoa">
+    <section class="card shadow-sm hero-card mb-4">
+        <div class="card-body p-4">
+            <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
+                <div>
+                    <div class="text-primary small fw-semibold mb-2">OA 自动填报（可视化简版）</div>
+                    <h2 class="h4 mb-2">科研事项用印流程可视化操作</h2>
+                    <p class="text-muted mb-0">
+                        该页面用于直观看到自动化流程步骤状态，适合联调和演示。后续可作为模块嵌入到业务页面中。
+                    </p>
+                </div>
+                <div class="d-flex gap-2">
+                    <a class="btn btn-outline-primary" href="{{ url_for('admin_uscoa') }}">
+                        <i class="bi bi-sliders me-1"></i>高级操作页
+                    </a>
+                    <a class="btn btn-outline-secondary" href="{{ url_for('admin') }}">
+                        <i class="bi bi-receipt me-1"></i>返回发票管理
+                    </a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <div class="row g-4">
+        <div class="col-xl-5">
+            <div class="card shadow-sm">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0"><i class="bi bi-pencil-square me-2 text-primary"></i>填报参数</h5>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-danger d-none" id="simpleFormError"></div>
+                    <form id="simpleUscoaForm" novalidate>
+                        <div class="row g-3">
+                            <div class="col-12">
+                                <label class="form-label" for="simpleSubject">申办内容</label>
+                                <input type="text" class="form-control" id="simpleSubject" required>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label">用印类型</label>
+                                <div id="simpleStampOptions" class="d-grid gap-2"></div>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label" for="simpleContractAmount">合同金额</label>
+                                <input type="number" class="form-control" id="simpleContractAmount" min="0" step="0.01">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label" for="simplePhone">联系电话</label>
+                                <input type="text" class="form-control" id="simplePhone" required>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label" for="simpleDescription">事项说明</label>
+                                <textarea class="form-control" id="simpleDescription" rows="4" required></textarea>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label" for="simpleRemark">备注</label>
+                                <input type="text" class="form-control" id="simpleRemark">
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label" for="simpleAttachments">附件</label>
+                                <input type="file" class="form-control" id="simpleAttachments" multiple>
+                                <div class="form-text" id="simpleAttachmentHint">支持多附件上传。</div>
+                                <div class="small text-muted mt-2" id="simpleAttachmentNames">未选择附件。</div>
+                            </div>
+                        </div>
+                        <div class="d-flex justify-content-end gap-2 mt-4">
+                            <button type="button" class="btn btn-outline-secondary" id="simpleFillOnlyBtn">
+                                <i class="bi bi-input-cursor-text me-1"></i>仅填充
+                            </button>
+                            <button type="submit" class="btn btn-primary" id="simpleSaveDraftBtn">
+                                <i class="bi bi-lightning-charge me-1"></i>保存草稿并执行
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-7">
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="bi bi-diagram-3 me-2 text-primary"></i>流程状态</h5>
+                    <span class="badge text-bg-secondary" id="simpleRunBadge">未执行</span>
+                </div>
+                <div class="card-body">
+                    <ul class="step-list" id="simpleStepList">
+                        <li class="step-item is-pending" data-step-id="login">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <span class="step-title">1. 登录 OA</span>
+                                <span class="badge text-bg-light">待执行</span>
+                            </div>
+                            <div class="small text-muted mt-1">等待执行</div>
+                        </li>
+                        <li class="step-item is-pending" data-step-id="navigate">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <span class="step-title">2. 菜单跳转</span>
+                                <span class="badge text-bg-light">待执行</span>
+                            </div>
+                            <div class="small text-muted mt-1">业务审批 -> 用印事项 -> 科研事项用印</div>
+                        </li>
+                        <li class="step-item is-pending" data-step-id="open_form">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <span class="step-title">3. 新建并进入表单</span>
+                                <span class="badge text-bg-light">待执行</span>
+                            </div>
+                            <div class="small text-muted mt-1">点击“我已阅读并完全理解上述内容”进入</div>
+                        </li>
+                        <li class="step-item is-pending" data-step-id="fill_form">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <span class="step-title">4. 自动填充表单</span>
+                                <span class="badge text-bg-light">待执行</span>
+                            </div>
+                            <div class="small text-muted mt-1">填入申办内容、用印类型、金额、说明、电话</div>
+                        </li>
+                        <li class="step-item is-pending" data-step-id="save_draft">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <span class="step-title">5. 保存草稿</span>
+                                <span class="badge text-bg-light">待执行</span>
+                            </div>
+                            <div class="small text-muted mt-1">仅在 save_draft 模式执行</div>
+                        </li>
+                        <li class="step-item is-pending" data-step-id="upload_attachment">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <span class="step-title">6. 附件上传</span>
+                                <span class="badge text-bg-light">待执行</span>
+                            </div>
+                            <div class="small text-muted mt-1">点击附件进入新页面并上传文件</div>
+                        </li>
+                        <li class="step-item is-pending" data-step-id="complete">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <span class="step-title">7. 完成</span>
+                                <span class="badge text-bg-light">待执行</span>
+                            </div>
+                            <div class="small text-muted mt-1">输出执行结果与产物路径</div>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-white">
+                    <h6 class="mb-0"><i class="bi bi-terminal me-2 text-primary"></i>运行日志</h6>
+                </div>
+                <div class="card-body">
+                    <pre class="run-log" id="simpleRunLog">准备就绪，等待执行。</pre>
+                </div>
+            </div>
+
+            <div class="card shadow-sm">
+                <div class="card-header bg-white">
+                    <h6 class="mb-0"><i class="bi bi-code-slash me-2 text-primary"></i>结果 JSON</h6>
+                </div>
+                <div class="card-body">
+                    <pre class="result-json" id="simpleResultJson">暂无结果</pre>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/uscoa_automation_simple.js') }}"></script>
+{% endblock %}

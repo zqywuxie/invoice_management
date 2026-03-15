@@ -25,6 +25,8 @@ const AppState = {
     uploaderFilter: '',  // 上传人筛选
     reimbursementStatusFilter: '',  // 报销状态筛选
     recordTypeFilter: ''  // 记录类型筛选 (Requirements: 13.4, 13.5)
+    , focusInvoice: ''
+    , urlStateInitialized: false
 };
 
 AppState.pagination = {
@@ -39,11 +41,25 @@ AppState.requestState = {
     active: 0
 };
 
+AppState.navigationState = {
+    focusInvoiceHandled: false
+};
+
 // ============================================
 // API Service
 // ============================================
 const API = {
     baseUrl: '/api',
+
+    async parseJsonResponse(response, fallbackMessage = '接口返回了非 JSON 响应') {
+        const contentType = response.headers.get('content-type') || '';
+        if (contentType.includes('application/json')) {
+            return response.json();
+        }
+        const text = await response.text();
+        const snippet = text ? text.slice(0, 200) : '';
+        throw new Error(`${fallbackMessage}${snippet ? `: ${snippet}` : ''}`);
+    },
 
     async checkAuth() {
         const response = await fetch(`${this.baseUrl}/auth/status`);
@@ -111,6 +127,15 @@ const API = {
         const response = await fetch(`${this.baseUrl}/invoices/${encodeURIComponent(invoiceNumber)}`);
         if (!response.ok) throw new Error('获取发票详情失败');
         return response.json();
+    },
+
+    async getInvoiceContracts(invoiceNumber, limit = 20) {
+        const response = await fetch(`${this.baseUrl}/invoices/${encodeURIComponent(invoiceNumber)}/contracts?limit=${limit}`);
+        const data = await this.parseJsonResponse(response, '获取关联合同失败');
+        if (!response.ok) {
+            throw new Error(data.message || '获取关联合同失败');
+        }
+        return data;
     },
 
     async uploadInvoice(file, reimbursementPersonId = null) {
@@ -323,7 +348,7 @@ const API = {
 
     async getPdfDimensions(invoiceNumber) {
         const response = await fetch(`${this.baseUrl}/invoices/${encodeURIComponent(invoiceNumber)}/pdf-dimensions`);
-        if (!response.ok) throw new Error('获取PDF尺寸失败');
+        if (!response.ok) throw new Error('获取 PDF 尺寸失败');
         return response.json();
     },
 
@@ -370,7 +395,90 @@ const API = {
             })
         });
         return response.json();
+    },
+
+    async getContracts(search = '', limit = 200) {
+        const params = new URLSearchParams();
+        if (search) params.append('search', search);
+        params.append('limit', String(limit));
+        const query = params.toString() ? `?${params.toString()}` : '';
+        const response = await fetch(`${this.baseUrl}/contracts${query}`);
+        const data = await this.parseJsonResponse(response, '获取合同列表失败');
+        if (!response.ok) {
+            throw new Error(data.message || '获取合同列表失败');
+        }
+        return data;
+    },
+
+    async createContract(invoiceNumbers, file, contractTags = '', contractTitle = '') {
+        const formData = new FormData();
+        formData.append('invoice_numbers', invoiceNumbers);
+        formData.append('contract_tags', contractTags);
+        formData.append('contract_title', contractTitle);
+        formData.append('file', file);
+        const response = await fetch(`${this.baseUrl}/contracts`, {
+            method: 'POST',
+            body: formData
+        });
+        return this.parseJsonResponse(response, '上传合同失败');
+    },
+
+    async deleteContract(contractId) {
+        const response = await fetch(`${this.baseUrl}/contracts/${contractId}`, {
+            method: 'DELETE'
+        });
+        return this.parseJsonResponse(response, '删除合同失败');
+    },
+
+    async getContractDetail(contractId) {
+        const response = await fetch(`${this.baseUrl}/contracts/${contractId}`);
+        return this.parseJsonResponse(response, '获取合同详情失败');
+    },
+
+    async updateContract(contractId, payload) {
+        const response = await fetch(`${this.baseUrl}/contracts/${contractId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        return this.parseJsonResponse(response, '更新合同失败');
+    },
+
+    getContractDownloadUrl(contractId, preview = false) {
+        const url = `${this.baseUrl}/contracts/${contractId}/download`;
+        return preview ? `${url}?preview=true` : url;
+    },
+
+    async getContractLinks(contractId) {
+        const response = await fetch(`${this.baseUrl}/contracts/${contractId}/links`);
+        const data = await this.parseJsonResponse(response, '获取配对信息失败');
+        if (!response.ok) {
+            throw new Error(data.message || '获取配对信息失败');
+        }
+        return data;
+    },
+
+    async updateContractLinks(contractId, invoiceNumbers) {
+        const response = await fetch(`${this.baseUrl}/contracts/${contractId}/links`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ invoice_numbers: invoiceNumbers })
+        });
+        return this.parseJsonResponse(response, '配对失败');
     }
+};
+
+API.validateContractInvoices = async function(invoiceNumbers) {
+    const response = await fetch(`${this.baseUrl}/contracts/validate-invoices`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ invoice_numbers: invoiceNumbers })
+    });
+    const data = await this.parseJsonResponse(response, '校验发票编号失败');
+    if (!response.ok) {
+        throw new Error(data.message || '校验发票编号失败');
+    }
+    return data;
 };
 
 // ============================================
@@ -411,6 +519,7 @@ const DOM = {
 
     // Buttons
     uploadBtn: document.getElementById('uploadBtn'),
+    contractManageBtn: document.getElementById('contractManageBtn'),
     uploadBtnEmpty: document.getElementById('uploadBtnEmpty'),
     exportBtn: document.getElementById('exportBtn'),
     fileInput: document.getElementById('fileInput'),
@@ -425,6 +534,10 @@ const DOM = {
     detailFilePath: document.getElementById('detailFilePath'),
     detailScanTime: document.getElementById('detailScanTime'),
     detailUploadedBy: document.getElementById('detailUploadedBy'),
+    detailRelatedContracts: document.getElementById('detailRelatedContracts'),
+    detailRelatedContractsCount: document.getElementById('detailRelatedContractsCount'),
+    openInvoiceContractsPanelBtn: document.getElementById('openInvoiceContractsPanelBtn'),
+    openInvoiceContractsBtn: document.getElementById('openInvoiceContractsBtn'),
     downloadPdfBtn: document.getElementById('downloadPdfBtn'),
     previewPdfBtn: document.getElementById('previewPdfBtn'),
 
@@ -529,8 +642,84 @@ const DOM = {
     addVoucherForm: document.getElementById('addVoucherForm'),
     newVoucherInput: document.getElementById('newVoucherInput'),
     newVoucherPreviewContainer: document.getElementById('newVoucherPreviewContainer'),
-    addVoucherError: document.getElementById('addVoucherError')
+    addVoucherError: document.getElementById('addVoucherError'),
+
+    // Contract Management Modal
+    contractManagementModal: document.getElementById('contractManagementModal'),
+    contractTotalCount: document.getElementById('contractTotalCount'),
+    contractPairedCount: document.getElementById('contractPairedCount'),
+    contractUnpairedCount: document.getElementById('contractUnpairedCount'),
+    contractMissingCount: document.getElementById('contractMissingCount'),
+    contractSummaryHint: document.getElementById('contractSummaryHint'),
+    contractTitleInput: document.getElementById('contractTitleInput'),
+    contractInvoiceNumbersInput: document.getElementById('contractInvoiceNumbersInput'),
+    contractFileInput: document.getElementById('contractFileInput'),
+    uploadContractBtn: document.getElementById('uploadContractBtn'),
+    openContractUploadBtn: document.getElementById('openContractUploadBtn'),
+    contractSearchInput: document.getElementById('contractSearchInput'),
+    refreshContractsBtn: document.getElementById('refreshContractsBtn'),
+    clearContractFiltersBtn: document.getElementById('clearContractFiltersBtn'),
+    contractResultSummary: document.getElementById('contractResultSummary'),
+    contractTableBody: document.getElementById('contractTableBody'),
+    contractDraftSummary: document.getElementById('contractDraftSummary'),
+    contractDraftCountBadge: document.getElementById('contractDraftCountBadge'),
+    contractDraftInvoiceList: document.getElementById('contractDraftInvoiceList'),
+    contractPairModal: document.getElementById('contractPairModal'),
+    contractPairMeta: document.getElementById('contractPairMeta'),
+    contractPairCandidates: document.getElementById('contractPairCandidates'),
+    contractPairCandidateChips: document.getElementById('contractPairCandidateChips'),
+    contractPairUseCandidatesBtn: document.getElementById('contractPairUseCandidatesBtn'),
+    contractPairClearBtn: document.getElementById('contractPairClearBtn'),
+    contractPairInvoiceNumbersInput: document.getElementById('contractPairInvoiceNumbersInput'),
+    contractPairSaveBtn: document.getElementById('contractPairSaveBtn'),
+    contractPairValidationBadge: document.getElementById('contractPairValidationBadge'),
+    contractPairValidationSummary: document.getElementById('contractPairValidationSummary'),
+    contractPairValidationList: document.getElementById('contractPairValidationList'),
+    contractTagsInput: document.getElementById('contractTagsInput'),
+    contractTagEntryInput: document.getElementById('contractTagEntryInput'),
+    contractTagList: document.getElementById('contractTagList'),
+    contractTagInput: document.getElementById('contractTagInput'),
+    contractDropZone: document.getElementById('contractDropZone'),
+    contractFileInfo: document.getElementById('contractFileInfo'),
+    contractFileName: document.getElementById('contractFileName'),
+    contractFileMeta: document.getElementById('contractFileMeta'),
+    contractFileClearBtn: document.getElementById('contractFileClearBtn'),
+    resetContractFormBtn: document.getElementById('resetContractFormBtn'),
+    contractDetailModal: document.getElementById('contractDetailModal'),
+    contractDetailTitle: document.getElementById('contractDetailTitle'),
+    contractDetailStatus: document.getElementById('contractDetailStatus'),
+    contractDetailTags: document.getElementById('contractDetailTags'),
+    contractDetailCandidates: document.getElementById('contractDetailCandidates'),
+    contractDetailLinked: document.getElementById('contractDetailLinked'),
+    contractDetailMissing: document.getElementById('contractDetailMissing'),
+    contractDetailFilename: document.getElementById('contractDetailFilename'),
+    contractDetailUploadTime: document.getElementById('contractDetailUploadTime'),
+    contractDetailFileSize: document.getElementById('contractDetailFileSize'),
+    contractDetailCandidateList: document.getElementById('contractDetailCandidateList'),
+    contractDetailLinkedList: document.getElementById('contractDetailLinkedList'),
+    contractDetailPreview: document.getElementById('contractDetailPreview'),
+    contractDetailDownloadBtn: document.getElementById('contractDetailDownloadBtn'),
+    contractDetailEditBtn: document.getElementById('contractDetailEditBtn'),
+    contractDetailPairBtn: document.getElementById('contractDetailPairBtn'),
+    contractEditModal: document.getElementById('contractEditModal'),
+    contractEditTitleInput: document.getElementById('contractEditTitleInput'),
+    contractEditTagsInput: document.getElementById('contractEditTagsInput'),
+    contractEditInvoiceNumbersInput: document.getElementById('contractEditInvoiceNumbersInput'),
+    contractEditSaveBtn: document.getElementById('contractEditSaveBtn'),
+    contractEditError: document.getElementById('contractEditError'),
+    contractTagFilterList: document.getElementById('contractTagFilterList'),
+    contractPairFilter: document.getElementById('contractPairFilter'),
+    contractSortSelect: document.getElementById('contractSortSelect'),
+    contractMissingOnlyToggle: document.getElementById('contractMissingOnlyToggle')
 };
+
+const PageContext = {
+    id: document.body?.dataset?.page || ''
+};
+
+const isInvoicePage = PageContext.id === 'admin-invoices';
+const isContractPage = PageContext.id === 'admin-contracts';
+const isUscoaPage = PageContext.id === 'admin-uscoa';
 
 
 // ============================================
@@ -539,7 +728,7 @@ const DOM = {
 const Utils = {
     formatCurrency(amount) {
         const num = parseFloat(amount) || 0;
-        return `¥${num.toFixed(2)}`;
+        return `楼${num.toFixed(2)}`;
     },
 
     formatDate(dateStr) {
@@ -555,6 +744,14 @@ const Utils = {
         } catch {
             return dateTimeStr;
         }
+    },
+
+    formatFileSize(bytes) {
+        const size = Number(bytes || 0);
+        if (size <= 0) return '0 B';
+        if (size < 1024) return `${size} B`;
+        if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+        return `${(size / (1024 * 1024)).toFixed(1)} MB`;
     },
 
     escapeHtml(text) {
@@ -574,6 +771,33 @@ const Utils = {
             clearTimeout(timeout);
             timeout = setTimeout(later, wait);
         };
+    },
+
+    buildAdminUrl(pathname, params = {}) {
+        const url = new URL(pathname, window.location.origin);
+        Object.entries(params).forEach(([key, value]) => {
+            if (value === undefined || value === null || value === '') {
+                return;
+            }
+            url.searchParams.set(key, String(value));
+        });
+        return `${url.pathname}${url.search}`;
+    },
+
+    buildInvoiceWorkspaceUrl(invoiceNumber, extraParams = {}) {
+        return this.buildAdminUrl('/admin', {
+            search: invoiceNumber || '',
+            focus_invoice: invoiceNumber || '',
+            ...extraParams
+        });
+    },
+
+    buildContractWorkspaceUrl(invoiceNumber, extraParams = {}) {
+        return this.buildAdminUrl('/admin/contracts', {
+            search: invoiceNumber || '',
+            focus_invoice: invoiceNumber || '',
+            ...extraParams
+        });
     }
 };
 
@@ -652,7 +876,7 @@ const InvoiceTable = {
     render(invoices) {
         AppState.invoices = invoices;
 
-        // 清除不存在的发票选择
+        // 娓呴櫎涓嶅瓨鍦ㄧ殑鍙戠エ閫夋嫨
         const invoiceNumbers = new Set(invoices.map(inv => inv.invoice_number));
         AppState.selectedInvoices.forEach(num => {
             if (!invoiceNumbers.has(num)) {
@@ -692,30 +916,29 @@ const InvoiceTable = {
             ? `<span class="badge bg-success voucher-badge">${voucherCount}</span>`
             : `<span class="badge bg-secondary voucher-badge">0</span>`;
         const isChecked = AppState.selectedInvoices.has(invoice.invoice_number);
+        const isFocused = AppState.focusInvoice && invoice.invoice_number === AppState.focusInvoice;
+        const rowClassName = [isChecked ? 'row-selected' : '', isFocused ? 'invoice-focus-row' : '']
+            .filter(Boolean)
+            .join(' ');
 
-        // 报销状态显示
         const reimbursementStatus = invoice.reimbursement_status || '未报销';
         const isReimbursed = reimbursementStatus === '已报销';
         const statusBadgeClass = isReimbursed ? 'bg-success' : 'bg-warning text-dark';
         const isAdmin = AppState.currentUser?.is_admin;
-
-        // 管理员可以点击切换状态
-        const statusCell = isAdmin
-            ? `<span class="badge ${statusBadgeClass} reimbursement-status-badge" 
-                     style="cursor: pointer;" 
+        const recordType = invoice.record_type || 'invoice';
+        const displayStatusCell = isAdmin
+            ? `<span class="badge ${statusBadgeClass} reimbursement-status-badge"
+                     style="cursor: pointer;"
                      data-invoice-number="${Utils.escapeHtml(invoice.invoice_number)}"
                      data-current-status="${Utils.escapeHtml(reimbursementStatus)}"
-                     title="点击切换状态">${Utils.escapeHtml(reimbursementStatus)}</span>`
+                     title="点击修改报销状态">${Utils.escapeHtml(reimbursementStatus)}</span>`
             : `<span class="badge ${statusBadgeClass}">${Utils.escapeHtml(reimbursementStatus)}</span>`;
-
-        // 记录类型标识 (Requirements: 13.1, 13.2, 13.3)
-        const recordType = invoice.record_type || 'invoice';
-        const recordTypeBadge = recordType === 'manual'
+        const displayRecordTypeBadge = recordType === 'manual'
             ? '<span class="badge badge-manual"><i class="bi bi-pencil-square me-1"></i>无票报销</span>'
-            : '<span class="badge badge-invoice"><i class="bi bi-file-earmark-pdf me-1"></i>有发票</span>';
+            : '<span class="badge badge-invoice"><i class="bi bi-file-earmark-pdf me-1"></i>发票记录</span>';
 
         return `
-            <tr data-invoice-number="${Utils.escapeHtml(invoice.invoice_number)}" class="${isChecked ? 'row-selected' : ''}">
+            <tr data-invoice-number="${Utils.escapeHtml(invoice.invoice_number)}" class="${rowClassName}">
                 <td class="text-center">
                     <input type="checkbox" class="form-check-input invoice-checkbox" 
                            data-invoice-number="${Utils.escapeHtml(invoice.invoice_number)}"
@@ -729,20 +952,23 @@ const InvoiceTable = {
                 <td class="col-remark">${Utils.escapeHtml(invoice.remark || '-')}</td>
                 <td class="col-uploaded_by">${Utils.escapeHtml(invoice.uploaded_by || '-')}</td>
                 <td class="col-scan_time"><small class="text-muted">${Utils.escapeHtml(invoice.time_ago || '-')}</small></td>
-                <td class="text-center col-reimbursement_status">${statusCell}</td>
-                <td class="text-center col-record_type">${recordTypeBadge}</td>
+                <td class="text-center col-reimbursement_status">${displayStatusCell}</td>
+                <td class="text-center col-record_type">${displayRecordTypeBadge}</td>
                 <td class="text-center col-voucher">${voucherBadge}</td>
                 <td class="text-center actions-cell col-actions">
                     <button class="btn btn-sm btn-outline-primary me-1 view-btn" title="查看详情">
                         <i class="bi bi-eye"></i>
                     </button>
-                    <button class="btn btn-sm btn-outline-success me-1 export-docx-btn" title="导出DOCX">
+                    <button class="btn btn-sm btn-outline-secondary me-1 contract-search-btn" title="查找关联合同">
+                        <i class="bi bi-file-earmark-lock2"></i>
+                    </button>
+                    <button class="btn btn-sm btn-outline-success me-1 export-docx-btn" title="导出 DOCX">
                         <i class="bi bi-file-earmark-word"></i>
                     </button>
-                    ${isAdmin ? `<button class="btn btn-sm btn-outline-info me-1 signature-btn" title="电子签章">
+                    ${isAdmin ? `<button class="btn btn-sm btn-outline-info me-1 signature-btn" title="签章管理">
                         <i class="bi bi-pen"></i>
                     </button>` : ''}
-                    <button class="btn btn-sm btn-outline-warning me-1 edit-btn" title="修改">
+                    <button class="btn btn-sm btn-outline-warning me-1 edit-btn" title="编辑">
                         <i class="bi bi-pencil"></i>
                     </button>
                     <button class="btn btn-sm btn-outline-danger delete-btn" title="删除">
@@ -806,7 +1032,7 @@ const InvoiceTable = {
         const exportExcelBtn = document.getElementById('exportBtn');
         const count = AppState.selectedInvoices.size;
 
-        // 更新底部操作栏的导出按钮文字
+        // 鏇存柊搴曢儴鎿嶄綔鏍忕殑瀵煎嚭鎸夐挳鏂囧瓧
         if (batchDocxBtn) {
             batchDocxBtn.innerHTML = count > 0
                 ? `<i class="bi bi-file-earmark-word me-1"></i>导出DOCX (${count})`
@@ -820,7 +1046,7 @@ const InvoiceTable = {
         }
 
         if (DOM.selectionSummary) {
-            DOM.selectionSummary.textContent = `已选择 ${count} 条`;
+            DOM.selectionSummary.textContent = `已选择 ${count} 项`;
         }
 
         if (DOM.selectionBar) {
@@ -891,8 +1117,12 @@ const InvoiceTable = {
 // Search Functionality (Task 6.4)
 // ============================================
 const Search = {
-    async execute(query) {
+    async execute(query, options = {}) {
         AppState.searchQuery = query;
+        if (options.resetFocus) {
+            AppState.focusInvoice = '';
+            AppState.navigationState.focusInvoiceHandled = false;
+        }
         try {
             AppState.pagination.page = 1;
             await App.loadInvoices();
@@ -905,7 +1135,7 @@ const Search = {
 
     clear() {
         DOM.searchInput.value = '';
-        this.execute('');
+        this.execute('', { resetFocus: true });
     }
 };
 
@@ -999,7 +1229,7 @@ const PersonFilter = {
         if (uploaderSelect) uploaderSelect.value = '';
         AppState.personFilter = '';
         AppState.uploaderFilter = '';
-        // 保留当前标签页的状态筛选
+        // 淇濈暀褰撳墠鏍囩椤电殑鐘舵€佺瓫閫?
         Search.execute(AppState.searchQuery);
     }
 };
@@ -1555,11 +1785,11 @@ const Upload = {
     modalInstance: null,
     uploadInvoiceModalInstance: null,
     isUploading: false,
-    // 报销人分组列表，每个分组包含: { personId, personName, records: [{ pdfFile, voucherFiles }] }
+    // 鎶ラ攢浜哄垎缁勫垪琛紝姣忎釜鍒嗙粍鍖呭惈: { personId, personName, records: [{ pdfFile, voucherFiles }] }
     personGroups: [],
     groupIdCounter: 0,
     recordIdCounter: 0,
-    // 缓存报销人列表
+    // 缂撳瓨鎶ラ攢浜哄垪琛?
     cachedPersons: [],
 
     init() {
@@ -1574,18 +1804,18 @@ const Upload = {
         if (DOM.uploadInvoiceForm) DOM.uploadInvoiceForm.reset();
         if (DOM.uploadInvoiceError) DOM.uploadInvoiceError.classList.add('d-none');
 
-        // 重置报销人分组列表
+        // 閲嶇疆鎶ラ攢浜哄垎缁勫垪琛?
         this.personGroups = [];
         this.groupIdCounter = 0;
         this.recordIdCounter = 0;
 
-        // 加载报销人列表并缓存
+        // 鍔犺浇鎶ラ攢浜哄垪琛ㄥ苟缂撳瓨
         await ReimbursementPerson.loadPersons();
         this.cachedPersons = ReimbursementPerson.persons;
 
         this.renderPersonGroups();
 
-        // 显示提示信息
+        // 鏄剧ず鎻愮ず淇℃伅
         const hint = document.getElementById('uploadHint');
         if (hint) hint.classList.remove('d-none');
 
@@ -1601,7 +1831,7 @@ const Upload = {
     },
 
     /**
-     * 添加一个新的报销人分组
+     * 娣诲姞涓€涓柊鐨勬姤閿€浜哄垎缁?
      */
     addPersonGroup() {
         const groupId = ++this.groupIdCounter;
@@ -1615,19 +1845,19 @@ const Upload = {
         });
         this.renderPersonGroups();
 
-        // 隐藏提示信息
+        // 闅愯棌鎻愮ず淇℃伅
         const hint = document.getElementById('uploadHint');
         if (hint) hint.classList.add('d-none');
     },
 
     /**
-     * 删除一个报销人分组
+     * 鍒犻櫎涓€涓姤閿€浜哄垎缁?
      */
     removePersonGroup(groupId) {
         this.personGroups = this.personGroups.filter(g => g.id !== groupId);
         this.renderPersonGroups();
 
-        // 如果没有分组了，显示提示信息
+        // 濡傛灉娌℃湁鍒嗙粍浜嗭紝鏄剧ず鎻愮ず淇℃伅
         if (this.personGroups.length === 0) {
             const hint = document.getElementById('uploadHint');
             if (hint) hint.classList.remove('d-none');
@@ -1635,7 +1865,7 @@ const Upload = {
     },
 
     /**
-     * 为指定报销人分组添加发票记录
+     * 涓烘寚瀹氭姤閿€浜哄垎缁勬坊鍔犲彂绁ㄨ褰?
      */
     addRecordToGroup(groupId) {
         const group = this.personGroups.find(g => g.id === groupId);
@@ -1651,7 +1881,7 @@ const Upload = {
     },
 
     /**
-     * 从指定报销人分组删除发票记录
+     * 浠庢寚瀹氭姤閿€浜哄垎缁勫垹闄ゅ彂绁ㄨ褰?
      */
     removeRecordFromGroup(groupId, recordId) {
         const group = this.personGroups.find(g => g.id === groupId);
@@ -1662,7 +1892,7 @@ const Upload = {
     },
 
     /**
-     * 生成报销人选择下拉框的HTML
+     * 鐢熸垚鎶ラ攢浜洪€夋嫨涓嬫媺妗嗙殑HTML
      */
     getPersonSelectHtml(groupId, selectedPersonId) {
         const options = this.cachedPersons.map(p =>
@@ -1671,12 +1901,12 @@ const Upload = {
         return `
             <option value="">-- 选择报销人 --</option>
             ${options}
-            <option value="__new__">➕ 添加新报销人</option>
+            <option value="__new__">+ 新增报销人</option>
         `;
     },
 
     /**
-     * 渲染报销人分组列表
+     * 娓叉煋鎶ラ攢浜哄垎缁勫垪琛?
      */
     renderPersonGroups() {
         const container = document.getElementById('personGroupsContainer');
@@ -1697,7 +1927,7 @@ const Upload = {
                             ${group.isNewPerson ? `
                                 <div class="input-group input-group-sm" style="max-width: 250px;">
                                     <input type="text" class="form-control new-person-name-input" 
-                                           data-group-id="${group.id}" placeholder="输入新报销人姓名" 
+                                           data-group-id="${group.id}" placeholder="输入新增报销人姓名"
                                            value="${Utils.escapeHtml(group.newPersonName)}">
                                     <button class="btn btn-outline-secondary cancel-new-person-btn" 
                                             type="button" data-group-id="${group.id}" title="取消">
@@ -1738,7 +1968,7 @@ const Upload = {
                                             <div class="row g-2">
                                                 <div class="col-md-6">
                                                     <label class="form-label small mb-1">
-                                                        <i class="bi bi-file-earmark-pdf text-danger me-1"></i>发票PDF <span class="text-danger">*</span>
+                                                        <i class="bi bi-file-earmark-pdf text-danger me-1"></i>发票 PDF <span class="text-danger">*</span>
                                                     </label>
                                                     <input type="file" class="form-control form-control-sm pdf-input" 
                                                            data-group-id="${group.id}" data-record-id="${record.id}" accept=".pdf">
@@ -1779,18 +2009,18 @@ const Upload = {
             </div>
         `).join('');
 
-        // 绑定事件
+        // 缁戝畾浜嬩欢
         this.bindGroupEvents();
     },
 
     /**
-     * 绑定报销人分组的事件
+     * 缁戝畾鎶ラ攢浜哄垎缁勭殑浜嬩欢
      */
     bindGroupEvents() {
         const container = document.getElementById('personGroupsContainer');
         if (!container) return;
 
-        // 删除报销人分组
+        // 鍒犻櫎鎶ラ攢浜哄垎缁?
         container.querySelectorAll('.remove-group-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 const groupId = parseInt(e.currentTarget.dataset.groupId);
@@ -1798,7 +2028,7 @@ const Upload = {
             });
         });
 
-        // 报销人选择
+        // 鎶ラ攢浜洪€夋嫨
         container.querySelectorAll('.person-select').forEach(select => {
             select.addEventListener('change', (e) => {
                 const groupId = parseInt(e.target.dataset.groupId);
@@ -1806,7 +2036,7 @@ const Upload = {
                 if (!group) return;
 
                 if (e.target.value === '__new__') {
-                    // 切换到新增报销人模式
+                    // 鍒囨崲鍒版柊澧炴姤閿€浜烘ā寮?
                     group.isNewPerson = true;
                     group.personId = null;
                     group.newPersonName = '';
@@ -1819,7 +2049,7 @@ const Upload = {
             });
         });
 
-        // 新报销人名称输入
+        // 鏂版姤閿€浜哄悕绉拌緭鍏?
         container.querySelectorAll('.new-person-name-input').forEach(input => {
             input.addEventListener('input', (e) => {
                 const groupId = parseInt(e.target.dataset.groupId);
@@ -1830,7 +2060,7 @@ const Upload = {
             });
         });
 
-        // 取消新增报销人
+        // 鍙栨秷鏂板鎶ラ攢浜?
         container.querySelectorAll('.cancel-new-person-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 const groupId = parseInt(e.currentTarget.dataset.groupId);
@@ -1843,7 +2073,7 @@ const Upload = {
             });
         });
 
-        // 添加发票记录
+        // 娣诲姞鍙戠エ璁板綍
         container.querySelectorAll('.add-record-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 const groupId = parseInt(e.currentTarget.dataset.groupId);
@@ -1851,7 +2081,7 @@ const Upload = {
             });
         });
 
-        // 删除发票记录
+        // 鍒犻櫎鍙戠エ璁板綍
         container.querySelectorAll('.remove-record-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 const groupId = parseInt(e.currentTarget.dataset.groupId);
@@ -1860,7 +2090,7 @@ const Upload = {
             });
         });
 
-        // PDF文件选择
+        // PDF鏂囦欢閫夋嫨
         container.querySelectorAll('.pdf-input').forEach(input => {
             input.addEventListener('change', (e) => {
                 const groupId = parseInt(e.target.dataset.groupId);
@@ -1878,7 +2108,7 @@ const Upload = {
             });
         });
 
-        // 凭证文件选择
+        // 鍑瘉鏂囦欢閫夋嫨
         container.querySelectorAll('.voucher-input').forEach(input => {
             input.addEventListener('change', (e) => {
                 const groupId = parseInt(e.target.dataset.groupId);
@@ -1899,32 +2129,32 @@ const Upload = {
 
     /**
      * Handle batch upload of PDF invoices with optional vouchers.
-     * 按报销人分组上传，每个记录有各自的凭证
+     * 鎸夋姤閿€浜哄垎缁勪笂浼狅紝姣忎釜璁板綍鏈夊悇鑷殑鍑瘉
      */
     async handleUploadWithVouchers() {
-        // 验证是否有报销人分组
+        // 楠岃瘉鏄惁鏈夋姤閿€浜哄垎缁?
         if (this.personGroups.length === 0) {
             if (DOM.uploadInvoiceError) {
-                DOM.uploadInvoiceError.textContent = '请添加至少一个报销人';
+                DOM.uploadInvoiceError.textContent = '请至少添加一组报销记录';
                 DOM.uploadInvoiceError.classList.remove('d-none');
             }
             return;
         }
 
-        // 验证每个分组都有报销人和发票记录
+        // 楠岃瘉姣忎釜鍒嗙粍閮芥湁鎶ラ攢浜哄拰鍙戠エ璁板綍
         for (let i = 0; i < this.personGroups.length; i++) {
             const group = this.personGroups[i];
             if (group.isNewPerson) {
                 if (!group.newPersonName.trim()) {
                     if (DOM.uploadInvoiceError) {
-                        DOM.uploadInvoiceError.textContent = `报销人 ${i + 1} 请输入新报销人姓名`;
+                        DOM.uploadInvoiceError.textContent = `第 ${i + 1} 组缺少新增报销人姓名`;
                         DOM.uploadInvoiceError.classList.remove('d-none');
                     }
                     return;
                 }
             } else if (!group.personId) {
                 if (DOM.uploadInvoiceError) {
-                    DOM.uploadInvoiceError.textContent = `报销人 ${i + 1} 请选择报销人`;
+                    DOM.uploadInvoiceError.textContent = `第 ${i + 1} 组未选择报销人`;
                     DOM.uploadInvoiceError.classList.remove('d-none');
                 }
                 return;
@@ -1932,7 +2162,7 @@ const Upload = {
 
             if (group.records.length === 0) {
                 if (DOM.uploadInvoiceError) {
-                    DOM.uploadInvoiceError.textContent = `报销人 ${i + 1} 请添加至少一条发票记录`;
+                    DOM.uploadInvoiceError.textContent = `第 ${i + 1} 组还没有上传记录`;
                     DOM.uploadInvoiceError.classList.remove('d-none');
                 }
                 return;
@@ -1941,7 +2171,7 @@ const Upload = {
             const invalidRecords = group.records.filter(r => !r.pdfFile);
             if (invalidRecords.length > 0) {
                 if (DOM.uploadInvoiceError) {
-                    DOM.uploadInvoiceError.textContent = `报销人 ${i + 1} 有发票记录未选择PDF文件`;
+                    DOM.uploadInvoiceError.textContent = `报销人 ${i + 1} 的发票记录未选择 PDF 文件`;
                     DOM.uploadInvoiceError.classList.remove('d-none');
                 }
                 return;
@@ -1951,7 +2181,7 @@ const Upload = {
         if (this.isUploading) return;
         this.isUploading = true;
 
-        // 计算总记录数
+        // 璁＄畻鎬昏褰曟暟
         const totalRecords = this.personGroups.reduce((sum, g) => sum + g.records.length, 0);
         let processedCount = 0;
 
@@ -1966,30 +2196,30 @@ const Upload = {
             this.hideUploadModal();
             await new Promise(resolve => setTimeout(resolve, 300));
 
-            // 开始允许显示进度
+            // 寮€濮嬪厑璁告樉绀鸿繘搴?
             this.startProgress();
 
-            // 处理每个报销人分组
+            // 澶勭悊姣忎釜鎶ラ攢浜哄垎缁?
             for (const group of this.personGroups) {
                 let personId = group.personId;
 
-                // 如果是新报销人，先创建
+                // 濡傛灉鏄柊鎶ラ攢浜猴紝鍏堝垱寤?
                 if (group.isNewPerson && group.newPersonName.trim()) {
                     try {
                         const result = await API.createReimbursementPerson(group.newPersonName.trim());
                         if (result.success && result.person) {
                             personId = result.person.id;
                         } else {
-                            Toast.error(`创建报销人 "${group.newPersonName}" 失败`);
+                            Toast.error(`创建报销人“${group.newPersonName}”失败`);
                             continue;
                         }
                     } catch (e) {
-                        Toast.error(`创建报销人 失败: ${e.message}`);
+                        Toast.error(`创建报销人失败: ${e.message}`);
                         continue;
                     }
                 }
 
-                // 处理该报销人的每条发票记录
+                // 澶勭悊璇ユ姤閿€浜虹殑姣忔潯鍙戠エ璁板綍
                 for (const record of group.records) {
                     processedCount++;
 
@@ -2043,13 +2273,13 @@ const Upload = {
 
             // Show result feedback
             if (successCount > 0) {
-                Toast.success(`成功上传 ${successCount} 张发票`);
+                Toast.success(`成功上传 ${successCount} 条记录`);
             }
             if (duplicateCount > 0) {
                 Toast.warning(`${duplicateCount} 张发票已存在，已跳过`);
             }
             if (errorCount > 0) {
-                Toast.error(`${errorCount} 条记录处理失败`);
+                Toast.error(`${errorCount} 条记录上传失败`);
             }
 
             // Show duplicate modal only when exactly one duplicate is found
@@ -2069,10 +2299,10 @@ const Upload = {
 
     async handleFiles(files) {
         if (!files || files.length === 0) return;
-        if (this.isUploading) return; // 防止重复上传
+        if (this.isUploading) return; // 闃叉閲嶅涓婁紶
 
         this.isUploading = true;
-        this.startProgress();  // 开始允许显示进度
+        this.startProgress();  // 寮€濮嬪厑璁告樉绀鸿繘搴?
         const fileArray = Array.from(files);
         const total = fileArray.length;
         let processed = 0;
@@ -2099,7 +2329,7 @@ const Upload = {
                         }
                     } else {
                         errorCount++;
-                        // 不在循环中显示错误，避免阻塞
+                        // 涓嶅湪寰幆涓樉绀洪敊璇紝閬垮厤闃诲
                     }
 
                     const progress = Math.round((processed / total) * 100);
@@ -2114,13 +2344,13 @@ const Upload = {
             console.error('Upload error:', e);
         }
 
-        // 确保进度框一定会关闭（等待关闭完成）
+        // 纭繚杩涘害妗嗕竴瀹氫細鍏抽棴锛堢瓑寰呭叧闂畬鎴愶級
         await this.forceHideProgress();
         this.isUploading = false;
 
         // Show summary (Requirements: 3.1, 3.2, 3.3)
         if (successCount > 0) {
-            Toast.success(`成功添加 ${successCount} 张发票`);
+            Toast.success(`成功上传 ${successCount} 个文件`);
         }
         if (duplicateCount > 0) {
             Toast.warning(`${duplicateCount} 张发票已存在，已跳过`);
@@ -2139,11 +2369,11 @@ const Upload = {
         await App.loadInvoices();
     },
 
-    progressAllowed: false,  // 是否允许显示进度框
-    progressShowing: false,   // 进度框当前是否显示
+    progressAllowed: false,  // 鏄惁鍏佽鏄剧ず杩涘害妗?
+    progressShowing: false,   // 杩涘害妗嗗綋鍓嶆槸鍚︽樉绀?
 
     showProgress(percent, text) {
-        // 只有在允许显示时才显示
+        // 鍙湁鍦ㄥ厑璁告樉绀烘椂鎵嶆樉绀?
         if (!this.progressAllowed) return;
 
         DOM.uploadProgressBar.style.width = `${percent}%`;
@@ -2167,27 +2397,27 @@ const Upload = {
     },
 
     async forceHideProgress() {
-        // 禁止再显示进度框
+        // 绂佹鍐嶆樉绀鸿繘搴︽
         this.progressAllowed = false;
         this.progressShowing = false;
 
         const modalEl = DOM.uploadProgressModal;
 
-        // 使用 Promise 等待模态框关闭动画完成
+        // 浣跨敤 Promise 绛夊緟妯℃€佹鍏抽棴鍔ㄧ敾瀹屾垚
         await new Promise(resolve => {
             const onHidden = () => {
                 modalEl.removeEventListener('hidden.bs.modal', onHidden);
                 resolve();
             };
 
-            // 如果模态框正在显示，等待它关闭
+            // 濡傛灉妯℃€佹姝ｅ湪鏄剧ず锛岀瓑寰呭畠鍏抽棴
             if (modalEl && modalEl.classList.contains('show')) {
                 modalEl.addEventListener('hidden.bs.modal', onHidden);
                 try {
                     this.modalInstance.hide();
                 } catch (e) { }
 
-                // 设置超时，防止事件没有触发
+                // 璁剧疆瓒呮椂锛岄槻姝簨浠舵病鏈夎Е鍙?
                 setTimeout(() => {
                     modalEl.removeEventListener('hidden.bs.modal', onHidden);
                     resolve();
@@ -2197,28 +2427,28 @@ const Upload = {
             }
         });
 
-        // 直接操作 DOM 确保关闭
+        // 鐩存帴鎿嶄綔 DOM 纭繚鍏抽棴
         if (modalEl) {
             modalEl.classList.remove('show');
             modalEl.style.display = 'none';
             modalEl.setAttribute('aria-hidden', 'true');
         }
 
-        // 移除所有 backdrop
+        // 绉婚櫎鎵€鏈?backdrop
         document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
 
-        // 恢复 body 滚动
+        // 鎭㈠ body 婊氬姩
         document.body.classList.remove('modal-open');
         document.body.style.overflow = '';
         document.body.style.paddingRight = '';
 
         DOM.uploadProgressBar.style.width = '0%';
 
-        // 额外等待确保 DOM 完全更新
+        // 棰濆绛夊緟纭繚 DOM 瀹屽叏鏇存柊
         await new Promise(resolve => setTimeout(resolve, 100));
     },
 
-    // 开始显示进度（在上传开始时调用）
+    // 寮€濮嬫樉绀鸿繘搴︼紙鍦ㄤ笂浼犲紑濮嬫椂璋冪敤锛?
     startProgress() {
         this.progressAllowed = true;
         this.progressShowing = false;
@@ -2261,10 +2491,10 @@ const Upload = {
      * @returns {Promise<void>}
      */
     async showDuplicateWarning(newInvoice, existingInvoice) {
-        // 确保进度框已完全关闭
+        // 纭繚杩涘害妗嗗凡瀹屽叏鍏抽棴
         await this.forceHideProgress();
 
-        // 额外等待确保模态框动画完成
+        // 棰濆绛夊緟纭繚妯℃€佹鍔ㄧ敾瀹屾垚
         await new Promise(resolve => setTimeout(resolve, 300));
 
         // Populate new invoice data
@@ -2281,7 +2511,7 @@ const Upload = {
         DOM.existingAmount.textContent = Utils.formatCurrency(existingInvoice.amount);
         DOM.existingRemark.textContent = existingInvoice.remark || '-';
 
-        // 显示上传人和上传时间
+        // 鏄剧ず涓婁紶浜哄拰涓婁紶鏃堕棿
         const existingUploadedBy = document.getElementById('existingUploadedBy');
         const existingScanTime = document.getElementById('existingScanTime');
         if (existingUploadedBy) {
@@ -2293,13 +2523,13 @@ const Upload = {
                 : '-';
         }
 
-        // 再次确保清理所有 backdrop
+        // 鍐嶆纭繚娓呯悊鎵€鏈?backdrop
         document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
         document.body.classList.remove('modal-open');
         document.body.style.overflow = '';
         document.body.style.paddingRight = '';
 
-        // 显示重复发票弹窗
+        // 鏄剧ず閲嶅鍙戠エ寮圭獥
         const duplicateModalInstance = new bootstrap.Modal(DOM.duplicateModal);
         duplicateModalInstance.show();
     }
@@ -2333,11 +2563,13 @@ const Modals = {
         DOM.detailUploadedBy.textContent = invoice.uploaded_by || '-';
         DOM.detailScanTime.textContent = Utils.formatDateTime(invoice.scan_time);
 
-        // 显示文件名（只取最后一部分）
+        // 鏄剧ず鏂囦欢鍚嶏紙鍙彇鏈€鍚庝竴閮ㄥ垎锛?
         const filePath = invoice.file_path || '-';
         const fileName = filePath.split(/[/\\]/).pop();
         DOM.detailFilePath.textContent = fileName;
         DOM.detailFilePath.title = filePath;
+
+        await InvoiceContracts.load(invoice.invoice_number);
 
         // Load vouchers for this invoice
         await VoucherGallery.loadVouchers(invoice.invoice_number);
@@ -2386,14 +2618,14 @@ const Modals = {
             remark: DOM.editRemark.value.trim()
         };
 
-        // 验证
+        // 楠岃瘉
         if (!data.invoice_date) {
-            DOM.editError.textContent = '开票日期不能为空';
+            DOM.editError.textContent = '请填写开票日期';
             DOM.editError.classList.remove('d-none');
             return;
         }
         if (data.amount <= 0) {
-            DOM.editError.textContent = '金额必须大于0';
+            DOM.editError.textContent = '閲戦蹇呴』澶т簬0';
             DOM.editError.classList.remove('d-none');
             return;
         }
@@ -2442,6 +2674,83 @@ const Modals = {
     }
 };
 
+const InvoiceContracts = {
+    renderLoading() {
+        if (DOM.detailRelatedContracts) {
+            DOM.detailRelatedContracts.innerHTML = '<div class="invoice-related-empty">正在加载关联合同...</div>';
+        }
+        if (DOM.detailRelatedContractsCount) {
+            DOM.detailRelatedContractsCount.textContent = '0';
+        }
+    },
+
+    renderContracts(contracts = []) {
+        if (DOM.detailRelatedContractsCount) {
+            DOM.detailRelatedContractsCount.textContent = String(contracts.length);
+        }
+        if (!DOM.detailRelatedContracts) {
+            return;
+        }
+        if (!contracts.length) {
+            DOM.detailRelatedContracts.innerHTML = '<div class="invoice-related-empty">暂无关联合同</div>';
+            return;
+        }
+
+        DOM.detailRelatedContracts.innerHTML = contracts.map((contract) => {
+            const candidateNumbers = contract.invoice_numbers || [];
+            const linkedNumbers = contract.linked_invoice_numbers || [];
+            return `
+                <div class="invoice-related-card">
+                    <div class="invoice-related-header">
+                        <div>
+                            <div class="invoice-related-title">${Utils.escapeHtml(contract.contract_title || contract.original_filename || '未命名合同')}</div>
+                            <div class="invoice-related-meta">
+                                <span>${Utils.escapeHtml(contract.original_filename || '-')}</span>
+                                <span>${Utils.escapeHtml(Utils.formatDateTime(contract.upload_time))}</span>
+                            </div>
+                        </div>
+                        <button type="button" class="btn btn-sm btn-outline-secondary invoice-related-open-btn" data-contract-search="${Utils.escapeHtml(AppState.currentInvoice?.invoice_number || '')}">
+                            <i class="bi bi-box-arrow-up-right me-1"></i>查看合同
+                        </button>
+                    </div>
+                    <div class="invoice-related-meta">
+                        <span>候选 ${candidateNumbers.length}</span>
+                        <span>已配对 ${linkedNumbers.length}</span>
+                        <span>缺失 ${contract.candidate_missing_count || 0}</span>
+                    </div>
+                    </div>
+                    <div class="contract-overview-chips mt-2">
+                        ${(candidateNumbers.length ? candidateNumbers : linkedNumbers).map((invoiceNumber) => `
+                            <button type="button" class="contract-reference-link" data-open-invoice="${Utils.escapeHtml(invoiceNumber)}">
+                                ${Utils.escapeHtml(invoiceNumber)}
+                            </button>
+                        `).join('') || '<span class="text-muted">-</span>'}
+                    </div>
+                </div>
+            `;
+        }).join('');
+    },
+
+    async load(invoiceNumber) {
+        this.renderLoading();
+        if (!invoiceNumber) {
+            this.renderContracts([]);
+            return;
+        }
+        try {
+            const data = await API.getInvoiceContracts(invoiceNumber);
+            this.renderContracts(data.contracts || []);
+        } catch (error) {
+            if (DOM.detailRelatedContracts) {
+                DOM.detailRelatedContracts.innerHTML = `<div class="invoice-related-empty">${Utils.escapeHtml(error.message || '加载关联合同失败')}</div>`;
+            }
+            if (DOM.detailRelatedContractsCount) {
+                DOM.detailRelatedContractsCount.textContent = '0';
+            }
+        }
+    }
+};
+
 // ============================================
 // Export Functionality (Task 6.8)
 // ============================================
@@ -2467,7 +2776,7 @@ const Export = {
             Toast.show('正在生成文档，请稍候...', 'info');
             const blob = await API.exportDocxBatch(selectedInvoices);
 
-            // 创建下载链接
+            // 鍒涘缓涓嬭浇閾炬帴
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
@@ -2478,7 +2787,7 @@ const Export = {
             document.body.removeChild(a);
             window.URL.revokeObjectURL(url);
 
-            Toast.success(`成功导出 ${selectedInvoices.length} 张发票`);
+            Toast.success(`成功导出 ${selectedInvoices.length} 份文档`);
         } catch (error) {
             Toast.error('批量导出失败: ' + error.message);
         }
@@ -2715,7 +3024,7 @@ const VoucherGallery = {
     },
 
     async deleteVoucher(voucherId) {
-        if (!confirm('确定要删除这张凭证吗？')) return;
+        if (!confirm('确认删除这张凭证吗？')) return;
 
         try {
             const result = await API.deleteVoucher(voucherId);
@@ -2886,7 +3195,7 @@ const ReimbursementPerson = {
         try {
             const result = await API.createReimbursementPerson(name);
             if (result.success) {
-                Toast.success('报销人添加成功');
+                Toast.success('新增报销人成功');
                 // Reload persons and select the new one
                 await this.loadPersons();
                 if (DOM.reimbursementPersonSelect && result.person) {
@@ -2895,11 +3204,11 @@ const ReimbursementPerson = {
                 this.hideNewPersonInput();
                 return result.person;
             } else {
-                Toast.error(result.message || '添加报销人失败');
+                Toast.error(result.message || '新增报销人失败');
                 return null;
             }
         } catch (error) {
-            Toast.error('添加报销人失败: ' + error.message);
+            Toast.error('新增报销人失败: ' + error.message);
             return null;
         }
     },
@@ -2951,7 +3260,7 @@ const Auth = {
             if (data.logged_in) {
                 AppState.currentUser = data.user;
                 DOM.currentUserName.textContent = data.user.display_name;
-                // 显示/隐藏管理员功能
+                // 鏄剧ず/闅愯棌绠＄悊鍛樺姛鑳?
                 const adminBtn = document.getElementById('userManagementBtn');
                 if (adminBtn) {
                     adminBtn.style.display = data.user.is_admin ? 'inline-block' : 'none';
@@ -2970,18 +3279,22 @@ const Auth = {
             if (result.success) {
                 AppState.currentUser = result.user;
                 DOM.currentUserName.textContent = result.user.display_name;
-                // 显示/隐藏管理员功能
+                // 鏄剧ず/闅愯棌绠＄悊鍛樺姛鑳?
                 const adminBtn = document.getElementById('userManagementBtn');
                 if (adminBtn) {
                     adminBtn.style.display = result.user.is_admin ? 'inline-block' : 'none';
                 }
                 this.hideLoginModal();
                 Toast.success('登录成功');
-                // 加载筛选数据
-                await PersonFilter.loadPersons();
-                await PersonFilter.loadUploaders();
-                await ColumnSettings.loadFromServer();
-                await App.loadInvoices();
+                if (isInvoicePage) {
+                    // 加载筛选数据
+                    await PersonFilter.loadPersons();
+                    await PersonFilter.loadUploaders();
+                    await ColumnSettings.loadFromServer();
+                    await App.loadInvoices();
+                } else if (isContractPage) {
+                    await ContractManager.loadContracts();
+                }
                 return true;
             } else {
                 DOM.loginError.textContent = result.message;
@@ -3003,7 +3316,7 @@ const Auth = {
             Toast.success('已退出登录');
             this.showLoginModal();
         } catch (e) {
-            Toast.error('退出失败');
+            Toast.error('退出登录失败');
         }
     }
 };
@@ -3025,7 +3338,7 @@ const UserManagement = {
 
     async showModal() {
         if (!AppState.currentUser?.is_admin) {
-            Toast.error('需要管理员权限');
+            Toast.error('当前用户没有管理员权限');
             return;
         }
         await this.loadUsers();
@@ -3066,10 +3379,10 @@ const UserManagement = {
                 <td>${user.is_admin ? '<span class="badge bg-primary">管理员</span>' : '<span class="badge bg-secondary">普通用户</span>'}</td>
                 <td><small class="text-muted">${new Date(user.created_at).toLocaleString('zh-CN')}</small></td>
                 <td>
-                    <button class="btn btn-sm btn-outline-warning me-1" onclick="UserManagement.showEditForm(${user.id})" title="编辑">
+                    <button class="btn btn-sm btn-outline-warning me-1" onclick="UserManagement.showEditForm(${user.id})" title="编辑用户">
                         <i class="bi bi-pencil"></i>
                     </button>
-                    <button class="btn btn-sm btn-outline-danger" onclick="UserManagement.deleteUser(${user.id})" title="删除">
+                    <button class="btn btn-sm btn-outline-danger" onclick="UserManagement.deleteUser(${user.id})" title="删除用户">
                         <i class="bi bi-trash"></i>
                     </button>
                 </td>
@@ -3079,17 +3392,18 @@ const UserManagement = {
 
     showAddForm() {
         this.editingUserId = null;
-        document.getElementById('userFormTitle').textContent = '添加用户';
+        document.getElementById('userFormTitle').textContent = '新增用户';
         document.getElementById('userFormUsername').value = '';
         document.getElementById('userFormUsername').disabled = false;
         document.getElementById('userFormDisplayName').value = '';
         document.getElementById('userFormPassword').value = '';
         document.getElementById('userFormPassword').required = true;
-        document.getElementById('userFormPasswordHint').textContent = '密码长度至少6位';
+        document.getElementById('userFormPasswordHint').textContent = '密码长度至少 6 位';
         document.getElementById('userFormIsAdmin').checked = false;
         document.getElementById('userFormError').classList.add('d-none');
         document.getElementById('userListSection').classList.add('d-none');
         document.getElementById('userFormSection').classList.remove('d-none');
+        document.getElementById('userFormTitle').textContent = '新增用户';
     },
 
     showEditForm(userId) {
@@ -3103,11 +3417,12 @@ const UserManagement = {
         document.getElementById('userFormDisplayName').value = user.display_name;
         document.getElementById('userFormPassword').value = '';
         document.getElementById('userFormPassword').required = false;
-        document.getElementById('userFormPasswordHint').textContent = '留空表示不修改密码';
+        document.getElementById('userFormPasswordHint').textContent = '留空则不修改密码';
         document.getElementById('userFormIsAdmin').checked = user.is_admin;
         document.getElementById('userFormError').classList.add('d-none');
         document.getElementById('userListSection').classList.add('d-none');
         document.getElementById('userFormSection').classList.remove('d-none');
+        document.getElementById('userFormTitle').textContent = '编辑用户';
     },
 
     cancelForm() {
@@ -3121,6 +3436,7 @@ const UserManagement = {
         const password = document.getElementById('userFormPassword').value;
         const isAdmin = document.getElementById('userFormIsAdmin').checked;
         const errorEl = document.getElementById('userFormError');
+        errorEl.classList.add('d-none');
 
         if (!displayName) {
             errorEl.textContent = '显示名称不能为空';
@@ -3131,19 +3447,17 @@ const UserManagement = {
         try {
             let result;
             if (this.editingUserId) {
-                // 编辑用户
                 const updateData = { display_name: displayName, is_admin: isAdmin };
                 if (password) updateData.password = password;
                 result = await API.updateUser(this.editingUserId, updateData);
             } else {
-                // 添加用户
                 if (!username) {
                     errorEl.textContent = '用户名不能为空';
                     errorEl.classList.remove('d-none');
                     return;
                 }
                 if (!password || password.length < 6) {
-                    errorEl.textContent = '密码长度至少6位';
+                    errorEl.textContent = '密码长度至少 6 位';
                     errorEl.classList.remove('d-none');
                     return;
                 }
@@ -3168,7 +3482,7 @@ const UserManagement = {
         const user = this.users.find(u => u.id === userId);
         if (!user) return;
 
-        if (!confirm(`确定要删除用户 "${user.display_name}" 吗？`)) return;
+        if (!confirm(`确认删除用户“${user.display_name}”吗？`)) return;
 
         try {
             const result = await API.deleteUser(userId);
@@ -3185,6 +3499,577 @@ const UserManagement = {
 };
 
 // ============================================
+// Contract Management
+// ============================================
+const ContractManager = {
+    modalInstance: null,
+    pairModalInstance: null,
+    detailModalInstance: null,
+    editModalInstance: null,
+    currentContract: null,
+    contracts: [],
+    tagValues: [],
+    selectedFile: null,
+    activeTags: new Set(),
+    pairFilter: 'all',
+
+    init() {
+        if (DOM.contractManagementModal) {
+            this.modalInstance = new bootstrap.Modal(DOM.contractManagementModal);
+        }
+        if (DOM.contractPairModal) {
+            this.pairModalInstance = new bootstrap.Modal(DOM.contractPairModal);
+        }
+        if (DOM.contractDetailModal) {
+            this.detailModalInstance = new bootstrap.Modal(DOM.contractDetailModal);
+        }
+        if (DOM.contractEditModal) {
+            this.editModalInstance = new bootstrap.Modal(DOM.contractEditModal);
+        }
+        this.initUploadUI();
+        this.bindEvents();
+    },
+
+    bindEvents() {
+        DOM.uploadContractBtn?.addEventListener('click', async () => {
+            await this.uploadContract();
+        });
+
+        DOM.refreshContractsBtn?.addEventListener('click', async () => {
+            await this.loadContracts();
+        });
+
+        DOM.contractSearchInput?.addEventListener('input', Utils.debounce(async () => {
+            await this.loadContracts();
+        }, 300));
+
+        DOM.contractTableBody?.addEventListener('click', async (e) => {
+            const downloadBtn = e.target.closest('.contract-download-btn');
+            if (downloadBtn) {
+                const contractId = downloadBtn.dataset.contractId;
+                const url = API.getContractDownloadUrl(contractId, false);
+                const a = document.createElement('a');
+                a.href = url;
+                a.target = '_blank';
+                a.rel = 'noopener';
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                return;
+            }
+
+            const detailBtn = e.target.closest('.contract-detail-btn');
+            if (detailBtn) {
+                const contractId = Number(detailBtn.dataset.contractId);
+                await this.openDetailModal(contractId);
+                return;
+            }
+
+            const editBtn = e.target.closest('.contract-edit-btn');
+            if (editBtn) {
+                const contractId = Number(editBtn.dataset.contractId);
+                const contract = this.contracts.find((item) => item.id === contractId);
+                if (contract) {
+                    this.openEditModal(contract);
+                } else {
+                    await this.openDetailModal(contractId);
+                    if (this.currentContract) {
+                        this.openEditModal(this.currentContract);
+                    }
+                }
+                return;
+            }
+
+            const pairBtn = e.target.closest('.contract-pair-btn');
+            if (pairBtn) {
+                const contractId = Number(pairBtn.dataset.contractId);
+                const contract = this.contracts.find((item) => item.id === contractId);
+                if (contract) {
+                    await this.openPairModal(contract);
+                }
+                return;
+            }
+
+            const deleteBtn = e.target.closest('.contract-delete-btn');
+            if (deleteBtn) {
+                const contractId = Number(deleteBtn.dataset.contractId);
+                await this.deleteContract(contractId);
+            }
+        });
+
+        DOM.contractPairSaveBtn?.addEventListener('click', async () => {
+            await this.savePairing();
+        });
+
+        DOM.contractDetailPairBtn?.addEventListener('click', async () => {
+            if (!this.currentContract) return;
+            const contract = this.contracts.find((item) => item.id === this.currentContract.id) || this.currentContract;
+            if (this.detailModalInstance) {
+                this.detailModalInstance.hide();
+            }
+            await this.openPairModal(contract);
+        });
+
+        DOM.contractEditSaveBtn?.addEventListener('click', async () => {
+            await this.saveEdit();
+        });
+
+        DOM.resetContractFormBtn?.addEventListener('click', () => {
+            this.resetUploadForm();
+        });
+
+        DOM.contractPairFilter?.addEventListener('click', (event) => {
+            const btn = event.target.closest('button[data-value]');
+            if (!btn) return;
+            this.pairFilter = btn.dataset.value || 'all';
+            DOM.contractPairFilter.querySelectorAll('button').forEach((button) => {
+                button.classList.toggle('active', button.dataset.value === this.pairFilter);
+            });
+            this.render();
+        });
+    },
+
+    openEditModal(contract) {
+        if (!this.editModalInstance || !contract) return;
+        this.currentContract = contract;
+        if (DOM.contractEditError) {
+            DOM.contractEditError.classList.add('d-none');
+        }
+        if (DOM.contractEditTitleInput) DOM.contractEditTitleInput.value = contract.contract_title || '';
+        if (DOM.contractEditTagsInput) DOM.contractEditTagsInput.value = contract.contract_tags_text || '';
+        if (DOM.contractEditInvoiceNumbersInput) {
+            DOM.contractEditInvoiceNumbersInput.value = contract.invoice_numbers_text || '';
+        }
+        this.editModalInstance.show();
+    },
+
+    async saveEdit() {
+        if (!this.currentContract) return;
+        const payload = {
+            contract_title: DOM.contractEditTitleInput?.value?.trim() || '',
+            contract_tags: DOM.contractEditTagsInput?.value?.trim() || '',
+            invoice_numbers: DOM.contractEditInvoiceNumbersInput?.value?.trim() || ''
+        };
+
+        try {
+            const result = await API.updateContract(this.currentContract.id, payload);
+            if (!result.success) {
+                if (DOM.contractEditError) {
+                    DOM.contractEditError.textContent = result.message || '更新失败';
+                    DOM.contractEditError.classList.remove('d-none');
+                } else {
+                    Toast.error(result.message || '更新失败');
+                }
+                return;
+            }
+            Toast.success(result.message || '更新成功');
+            await this.loadContracts();
+            if (this.editModalInstance) {
+                this.editModalInstance.hide();
+            }
+        } catch (error) {
+            if (DOM.contractEditError) {
+                DOM.contractEditError.textContent = error.message || '更新失败';
+                DOM.contractEditError.classList.remove('d-none');
+            } else {
+                Toast.error(error.message || '更新失败');
+            }
+        }
+    },
+
+    initUploadUI() {
+        if (DOM.contractDropZone && DOM.contractFileInput) {
+            DOM.contractDropZone.addEventListener('click', () => {
+                DOM.contractFileInput.click();
+            });
+            DOM.contractDropZone.addEventListener('dragover', (event) => {
+                event.preventDefault();
+                DOM.contractDropZone.classList.add('drag-over');
+            });
+            DOM.contractDropZone.addEventListener('dragleave', () => {
+                DOM.contractDropZone.classList.remove('drag-over');
+            });
+            DOM.contractDropZone.addEventListener('drop', (event) => {
+                event.preventDefault();
+                DOM.contractDropZone.classList.remove('drag-over');
+                const file = event.dataTransfer?.files?.[0];
+                if (file) {
+                    this.handleContractFile(file);
+                }
+            });
+            DOM.contractFileInput.addEventListener('change', (event) => {
+                const file = event.target.files?.[0];
+                if (file) {
+                    this.handleContractFile(file);
+                }
+            });
+        }
+
+        DOM.contractFileClearBtn?.addEventListener('click', () => {
+            this.selectedFile = null;
+            if (DOM.contractFileInput) DOM.contractFileInput.value = '';
+            this.updateFileInfo(null);
+        });
+
+        if (DOM.contractTagEntryInput) {
+            DOM.contractTagEntryInput.addEventListener('keydown', (event) => {
+                if (event.key === 'Enter' || event.key === ',') {
+                    event.preventDefault();
+                    this.addTagFromInput();
+                }
+            });
+            DOM.contractTagEntryInput.addEventListener('blur', () => {
+                this.addTagFromInput();
+            });
+        }
+    },
+
+    addTagFromInput() {
+        const raw = DOM.contractTagEntryInput?.value?.trim() || '';
+        if (!raw) return;
+        raw.split(',').forEach((item) => this.addTag(item.trim()));
+        if (DOM.contractTagEntryInput) DOM.contractTagEntryInput.value = '';
+    },
+
+    addTag(tag) {
+        if (!tag) return;
+        if (this.tagValues.includes(tag)) return;
+        this.tagValues.push(tag);
+        this.renderTags();
+    },
+
+    removeTag(tag) {
+        this.tagValues = this.tagValues.filter((item) => item !== tag);
+        this.renderTags();
+    },
+
+    renderTags() {
+        if (DOM.contractTagList) {
+            DOM.contractTagList.innerHTML = this.tagValues.map((tag) => `
+                <span class="contract-tag-chip">
+                    ${Utils.escapeHtml(tag)}
+                    <button type="button" data-tag="${Utils.escapeHtml(tag)}">&times;</button>
+                </span>
+            `).join('');
+            DOM.contractTagList.querySelectorAll('button[data-tag]').forEach((btn) => {
+                btn.addEventListener('click', () => {
+                    this.removeTag(btn.dataset.tag || '');
+                });
+            });
+        }
+        if (DOM.contractTagsInput) {
+            DOM.contractTagsInput.value = this.tagValues.join(', ');
+        }
+    },
+
+    handleContractFile(file) {
+        if (!file) return;
+        if (!file.name.toLowerCase().endsWith('.pdf')) {
+            Toast.error('合同仅支持 PDF 格式');
+            return;
+        }
+        this.selectedFile = file;
+        this.updateFileInfo(file);
+    },
+
+    updateFileInfo(file) {
+        if (!DOM.contractFileInfo || !DOM.contractFileName || !DOM.contractFileMeta) return;
+        if (!file) {
+            DOM.contractFileInfo.classList.add('d-none');
+            return;
+        }
+        DOM.contractFileName.textContent = file.name;
+        DOM.contractFileMeta.textContent = `大小：${Utils.formatFileSize(file.size || 0)}`;
+        DOM.contractFileInfo.classList.remove('d-none');
+    },
+
+    resetUploadForm() {
+        if (DOM.contractInvoiceNumbersInput) DOM.contractInvoiceNumbersInput.value = '';
+        if (DOM.contractTagEntryInput) DOM.contractTagEntryInput.value = '';
+        this.tagValues = [];
+        this.renderTags();
+        this.selectedFile = null;
+        if (DOM.contractFileInput) DOM.contractFileInput.value = '';
+        this.updateFileInfo(null);
+    },
+
+    async openModal() {
+        if (!this.modalInstance) return;
+        await this.loadContracts();
+        this.resetUploadForm();
+        this.modalInstance.show();
+    },
+
+    async loadContracts() {
+        try {
+            const search = DOM.contractSearchInput?.value?.trim() || '';
+            const data = await API.getContracts(search, 500);
+            this.contracts = data.contracts || [];
+            this.renderTagFilters();
+            this.render();
+        } catch (error) {
+            Toast.error(error.message || '获取合同列表失败');
+        }
+    },
+
+    renderTagFilters() {
+        if (!DOM.contractTagFilterList) return;
+        const tags = new Set();
+        this.contracts.forEach((contract) => {
+            (contract.contract_tags || []).forEach((tag) => tags.add(tag));
+        });
+        const tagList = Array.from(tags).sort((a, b) => a.localeCompare(b, 'zh-Hans'));
+        // Drop active tags that no longer exist in current dataset
+        this.activeTags.forEach((tag) => {
+            if (!tags.has(tag)) {
+                this.activeTags.delete(tag);
+            }
+        });
+        DOM.contractTagFilterList.innerHTML = `
+            <button type="button" class="contract-tag-filter ${this.activeTags.size === 0 ? 'active' : ''}" data-tag="__all">全部标签</button>
+            ${tagList.map((tag) => `
+                <button type="button" class="contract-tag-filter ${this.getTagColorClass(tag)} ${this.activeTags.has(tag) ? 'active' : ''}" data-tag="${Utils.escapeHtml(tag)}">
+                    ${Utils.escapeHtml(tag)}
+                </button>
+            `).join('')}
+        `;
+        DOM.contractTagFilterList.querySelectorAll('button[data-tag]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const tag = btn.dataset.tag || '';
+                if (tag === '__all') {
+                    this.activeTags.clear();
+                } else {
+                    if (this.activeTags.has(tag)) {
+                        this.activeTags.delete(tag);
+                    } else {
+                        this.activeTags.add(tag);
+                    }
+                }
+                this.renderTagFilters();
+                this.render();
+            });
+        });
+    },
+
+    getTagColorClass(tag) {
+        if (!tag) return 'tag-color-0';
+        let hash = 0;
+        for (let i = 0; i < tag.length; i += 1) {
+            hash = (hash * 31 + tag.charCodeAt(i)) % 8;
+        }
+        return `tag-color-${hash}`;
+    },
+
+    async openPairModal(contract) {
+        if (!this.pairModalInstance || !contract) return;
+        this.currentContract = contract;
+
+        if (DOM.contractPairMeta) {
+            const fileName = contract.original_filename || '-';
+            const uploadTime = contract.upload_time ? Utils.formatDateTime(contract.upload_time) : '-';
+            DOM.contractPairMeta.textContent = `合同文件：${fileName} | 上传时间：${uploadTime}`;
+        }
+        if (DOM.contractPairCandidates) {
+            const candidates = contract.invoice_numbers_text || (contract.invoice_numbers || []).join('\n');
+            DOM.contractPairCandidates.textContent = candidates || '暂无候选发票编号';
+        }
+        if (DOM.contractPairInvoiceNumbersInput) {
+            DOM.contractPairInvoiceNumbersInput.value = '';
+        }
+
+        try {
+            const data = await API.getContractLinks(contract.id);
+            const linked = data.invoice_numbers || [];
+            if (DOM.contractPairInvoiceNumbersInput) {
+                if (linked.length) {
+                    DOM.contractPairInvoiceNumbersInput.value = linked.join('\n');
+                } else {
+                    DOM.contractPairInvoiceNumbersInput.value = contract.invoice_numbers_text || '';
+                }
+            }
+        } catch (error) {
+            Toast.error(error.message || '获取配对信息失败');
+        }
+
+        this.pairModalInstance.show();
+    },
+
+    async openDetailModal(contractId) {
+        if (!this.detailModalInstance || !contractId) return;
+
+        try {
+            const data = await API.getContractDetail(contractId);
+            if (!data.success || !data.contract) {
+                Toast.error(data.message || '获取合同详情失败');
+                return;
+            }
+            const contract = data.contract;
+            this.currentContract = contract;
+
+            if (DOM.contractDetailTitle) DOM.contractDetailTitle.textContent = contract.contract_title || '-';
+            if (DOM.contractDetailTags) {
+                const tags = (contract.contract_tags || []).map((tag) => `<span class="contract-tag-badge ${this.getTagColorClass(tag)} me-1 mb-1">${Utils.escapeHtml(tag)}</span>`).join('');
+                DOM.contractDetailTags.innerHTML = tags || '-';
+            }
+            if (DOM.contractDetailCandidates) {
+                DOM.contractDetailCandidates.textContent = (contract.invoice_numbers || []).join(', ') || '-';
+            }
+            if (DOM.contractDetailLinked) {
+                DOM.contractDetailLinked.textContent = (contract.linked_invoice_numbers || []).join(', ') || '-';
+            }
+            if (DOM.contractDetailFilename) DOM.contractDetailFilename.textContent = contract.original_filename || '-';
+            if (DOM.contractDetailUploadTime) DOM.contractDetailUploadTime.textContent = Utils.formatDateTime(contract.upload_time);
+            if (DOM.contractDetailFileSize) DOM.contractDetailFileSize.textContent = Utils.formatFileSize(contract.file_size || 0);
+            if (DOM.contractDetailPreview) {
+                DOM.contractDetailPreview.src = API.getContractDownloadUrl(contractId, true);
+            }
+            if (DOM.contractDetailDownloadBtn) {
+                DOM.contractDetailDownloadBtn.href = API.getContractDownloadUrl(contractId, false);
+            }
+
+            this.detailModalInstance.show();
+        } catch (error) {
+            Toast.error(error.message || '获取合同详情失败');
+        }
+    },
+
+    async savePairing() {
+        if (!this.currentContract) return;
+        const invoiceNumbers = DOM.contractPairInvoiceNumbersInput?.value?.trim() || '';
+
+        try {
+            const result = await API.updateContractLinks(this.currentContract.id, invoiceNumbers);
+            if (!result.success) {
+                const missing = result.missing_invoice_numbers || [];
+                if (missing.length) {
+                    Toast.error(`未找到发票：${missing.join(', ')}`);
+                } else {
+                    Toast.error(result.message || '配对失败');
+                }
+                return;
+            }
+
+            Toast.success(result.message || '配对成功');
+            await this.loadContracts();
+            if (this.pairModalInstance) {
+                this.pairModalInstance.hide();
+            }
+        } catch (error) {
+            Toast.error(error.message || '配对失败');
+        }
+    },
+
+    async uploadContract() {
+        const invoiceNumbers = DOM.contractInvoiceNumbersInput?.value?.trim() || '';
+        const file = this.selectedFile || DOM.contractFileInput?.files?.[0];
+        const tags = DOM.contractTagsInput?.value?.trim() || '';
+
+        if (!file) {
+            Toast.error('请选择合同 PDF 文件');
+            return;
+        }
+        if (!file.name.toLowerCase().endsWith('.pdf')) {
+            Toast.error('合同仅支持 PDF 格式');
+            return;
+        }
+
+        try {
+            const result = await API.createContract(invoiceNumbers, file, tags);
+            if (!result.success) {
+                Toast.error(result.message || '上传合同失败');
+                return;
+            }
+
+            Toast.success(result.message || '合同上传成功');
+            this.resetUploadForm();
+            await this.loadContracts();
+        } catch (error) {
+            Toast.error(error.message || '上传合同失败');
+        }
+    },
+
+    async deleteContract(contractId) {
+        if (!contractId) return;
+        if (!confirm('确认删除这份合同吗？此操作不可恢复。')) return;
+
+        try {
+            const result = await API.deleteContract(contractId);
+            if (result.success) {
+                Toast.success(result.message || '合同删除成功');
+                await this.loadContracts();
+            } else {
+                Toast.error(result.message || '合同删除失败');
+            }
+        } catch (error) {
+            Toast.error(error.message || '合同删除失败');
+        }
+    },
+
+    render() {
+        if (!DOM.contractTableBody) return;
+
+        let filteredContracts = [...this.contracts];
+        if (this.activeTags.size > 0) {
+            filteredContracts = filteredContracts.filter((contract) => {
+                const tags = contract.contract_tags || [];
+                return tags.some((tag) => this.activeTags.has(tag));
+            });
+        }
+        if (this.pairFilter === 'paired') {
+            filteredContracts = filteredContracts.filter((contract) => (contract.linked_invoice_count || 0) > 0);
+        } else if (this.pairFilter === 'unpaired') {
+            filteredContracts = filteredContracts.filter((contract) => (contract.linked_invoice_count || 0) === 0);
+        }
+
+        if (!filteredContracts.length) {
+            DOM.contractTableBody.innerHTML = `
+                <tr>
+                    <td colspan=\"8\" class=\"text-center text-muted py-4\">暂无合同数据</td>
+                </tr>
+            `;
+            return;
+        }
+
+        DOM.contractTableBody.innerHTML = filteredContracts.map((contract) => `
+            <tr>
+                <td>
+                    <div class=\"fw-semibold\">${(contract.invoice_numbers || []).map((invoiceNumber) => `<span class="badge text-bg-light border me-1 mb-1">${Utils.escapeHtml(invoiceNumber)}</span>`).join('') || '-'}</div>
+                    <small class=\"text-muted\">主编号：${contract.invoice_number ? Utils.escapeHtml(contract.invoice_number) : '未关联'}</small>
+                </td>
+                <td class=\"text-center\">${contract.invoice_count || (contract.invoice_numbers || []).length || 0}</td>
+                <td class=\"text-center\">${contract.linked_invoice_count || 0}</td>
+                <td>${Utils.escapeHtml(contract.contract_title || '-')}</td>
+                <td>${(contract.contract_tags || []).map((tag) => `<span class="contract-tag-badge ${this.getTagColorClass(tag)} me-1 mb-1">${Utils.escapeHtml(tag)}</span>`).join('') || '-'}</td>
+                <td>
+                    <span class=\"d-inline-block text-truncate\" style=\"max-width: 260px;\" title=\"${Utils.escapeHtml(contract.original_filename || '-')}\">
+                        ${Utils.escapeHtml(contract.original_filename || '-')}
+                    </span>
+                    <small class=\"text-muted d-block\">${Utils.formatFileSize(contract.file_size || 0)}</small>
+                </td>
+                <td>${Utils.formatDateTime(contract.upload_time)}</td>
+                <td class=\"text-center\">
+                    <button class=\"btn btn-sm btn-outline-dark contract-detail-btn\" data-contract-id=\"${contract.id}\" title=\"查看详情\">
+                        <i class=\"bi bi-eye\"></i>
+                    </button>
+                    <button class=\"btn btn-sm btn-outline-warning contract-edit-btn\" data-contract-id=\"${contract.id}\" title=\"编辑\">
+                        <i class=\"bi bi-pencil-square\"></i>
+                    </button>
+                    <button class=\"btn btn-sm btn-outline-secondary contract-pair-btn\" data-contract-id=\"${contract.id}\" title=\"配对\">
+                        <i class=\"bi bi-link-45deg\"></i>
+                    </button>
+                    <button class=\"btn btn-sm btn-outline-primary contract-download-btn\" data-contract-id=\"${contract.id}\" title=\"下载\">
+                        <i class=\"bi bi-download\"></i>
+                    </button>
+                    <button class=\"btn btn-sm btn-outline-danger contract-delete-btn\" data-contract-id=\"${contract.id}\" title=\"删除\">
+                        <i class=\"bi bi-trash\"></i>
+                    </button>
+                </td>
+            </tr>
+        `).join('');
+    }
+};
+
+// ============================================
 // Main Application
 // ============================================
 const App = {
@@ -3192,6 +4077,7 @@ const App = {
         // Initialize modals
         Auth.init();
         UserManagement.init();
+        ContractManager.init();
         Upload.init();
         Modals.init();
         VoucherGallery.init();
@@ -3208,19 +4094,140 @@ const App = {
 
         // Load initial data if logged in
         if (isLoggedIn) {
-            // 加载筛选下拉框数据
+            // 鍔犺浇绛涢€変笅鎷夋鏁版嵁
             await PersonFilter.loadPersons();
             await PersonFilter.loadUploaders();
+            this.applyInitialUrlState();
             await this.loadInvoices();
         }
 
         console.log('Invoice Web App initialized');
     },
 
+    applyInitialUrlState() {
+        if (AppState.urlStateInitialized) {
+            return;
+        }
+
+        const params = new URLSearchParams(window.location.search);
+        AppState.searchQuery = (params.get('search') || '').trim();
+        AppState.focusInvoice = (params.get('focus_invoice') || '').trim();
+        AppState.dateFilter.startDate = (params.get('start_date') || '').trim();
+        AppState.dateFilter.endDate = (params.get('end_date') || '').trim();
+        AppState.personFilter = (params.get('reimbursement_person_id') || '').trim();
+        AppState.uploaderFilter = (params.get('uploaded_by') || '').trim();
+        AppState.reimbursementStatusFilter = (params.get('reimbursement_status') || '').trim();
+        AppState.recordTypeFilter = (params.get('record_type') || '').trim();
+
+        const page = Number.parseInt(params.get('page') || '1', 10);
+        const pageSize = Number.parseInt(params.get('page_size') || '', 10);
+        AppState.pagination.page = Number.isInteger(page) && page > 0 ? page : 1;
+        if (Number.isInteger(pageSize) && pageSize > 0) {
+            AppState.pagination.pageSize = pageSize;
+        }
+
+        if (DOM.searchInput) DOM.searchInput.value = AppState.searchQuery;
+        if (DOM.startDateInput) DOM.startDateInput.value = AppState.dateFilter.startDate;
+        if (DOM.endDateInput) DOM.endDateInput.value = AppState.dateFilter.endDate;
+
+        const personSelect = document.getElementById('personFilterSelect');
+        const uploaderSelect = document.getElementById('uploaderFilterSelect');
+        if (personSelect) personSelect.value = AppState.personFilter;
+        if (uploaderSelect) uploaderSelect.value = AppState.uploaderFilter;
+        if (DOM.paginationPageSize) DOM.paginationPageSize.value = String(AppState.pagination.pageSize);
+
+        this.setStatusTabFromState();
+        this.setRecordTypeRadioFromState();
+        AppState.navigationState.focusInvoiceHandled = false;
+        AppState.urlStateInitialized = true;
+    },
+
+    syncUrlState() {
+        if (!isInvoicePage) {
+            return;
+        }
+
+        const url = new URL(window.location.href);
+        const params = new URLSearchParams();
+
+        if (AppState.searchQuery) params.set('search', AppState.searchQuery);
+        if (AppState.focusInvoice) params.set('focus_invoice', AppState.focusInvoice);
+        if (AppState.dateFilter.startDate) params.set('start_date', AppState.dateFilter.startDate);
+        if (AppState.dateFilter.endDate) params.set('end_date', AppState.dateFilter.endDate);
+        if (AppState.personFilter) params.set('reimbursement_person_id', AppState.personFilter);
+        if (AppState.uploaderFilter) params.set('uploaded_by', AppState.uploaderFilter);
+        if (AppState.reimbursementStatusFilter) params.set('reimbursement_status', AppState.reimbursementStatusFilter);
+        if (AppState.recordTypeFilter) params.set('record_type', AppState.recordTypeFilter);
+        if (AppState.pagination.page > 1) params.set('page', String(AppState.pagination.page));
+        if (AppState.pagination.pageSize !== 20) params.set('page_size', String(AppState.pagination.pageSize));
+
+        const nextQuery = params.toString();
+        const currentQuery = url.search.startsWith('?') ? url.search.slice(1) : url.search;
+        if (nextQuery === currentQuery) {
+            return;
+        }
+
+        const nextUrl = nextQuery ? `${url.pathname}?${nextQuery}` : url.pathname;
+        window.history.replaceState({}, '', nextUrl);
+    },
+
+    setStatusTabFromState() {
+        const statusTabs = document.getElementById('statusTabs');
+        if (!statusTabs) {
+            return;
+        }
+
+        const activeTab = AppState.reimbursementStatusFilter
+            ? statusTabs.querySelector(`.nav-link[data-status="${AppState.reimbursementStatusFilter}"]`)
+            : document.getElementById('tab-all');
+
+        statusTabs.querySelectorAll('.nav-link').forEach((tab) => tab.classList.remove('active'));
+        (activeTab || document.getElementById('tab-all'))?.classList.add('active');
+    },
+
+    setRecordTypeRadioFromState() {
+        const checkedRadio = document.querySelector(`input[name="adminRecordTypeFilter"][value="${AppState.recordTypeFilter}"]`)
+            || document.getElementById('admin-filter-all');
+        if (checkedRadio) {
+            checkedRadio.checked = true;
+        }
+    },
+
+    openContractWorkspace(invoiceNumber) {
+        if (!invoiceNumber) {
+            return;
+        }
+        window.location.href = Utils.buildContractWorkspaceUrl(invoiceNumber);
+    },
+
+    async openFocusedInvoiceFromState() {
+        if (!AppState.focusInvoice || AppState.navigationState.focusInvoiceHandled) {
+            return;
+        }
+
+        const focusedInvoice = AppState.invoices.find((invoice) => invoice.invoice_number === AppState.focusInvoice);
+        if (!focusedInvoice) {
+            return;
+        }
+
+        AppState.navigationState.focusInvoiceHandled = true;
+        const escapedInvoiceNumber = typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
+            ? CSS.escape(AppState.focusInvoice)
+            : AppState.focusInvoice.replace(/"/g, '\\"');
+        const focusedRow = DOM.invoiceTableBody?.querySelector(`[data-invoice-number="${escapedInvoiceNumber}"]`);
+        focusedRow?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        await Modals.showDetail(focusedInvoice);
+    },
+
     bindEvents() {
         // Upload buttons - show upload modal
         DOM.uploadBtn.addEventListener('click', () => Upload.showUploadModal());
         DOM.uploadBtnEmpty.addEventListener('click', () => Upload.showUploadModal());
+        DOM.contractManageBtn?.addEventListener('click', async () => {
+            if (DOM.contractManagementModal) {
+                await ContractManager.openModal();
+            }
+        });
 
         // File input change (for legacy/fallback)
         DOM.fileInput.addEventListener('change', (e) => {
@@ -3274,7 +4281,7 @@ const App = {
         });
 
         // Search input with debounce
-        const debouncedSearch = Utils.debounce((query) => Search.execute(query), 300);
+        const debouncedSearch = Utils.debounce((query) => Search.execute(query, { resetFocus: true }), 300);
         DOM.searchInput.addEventListener('input', (e) => debouncedSearch(e.target.value));
 
         // Clear search button
@@ -3323,6 +4330,12 @@ const App = {
                 return;
             }
 
+            // Contract button clicked
+            if (e.target.closest('.contract-search-btn')) {
+                this.openContractWorkspace(invoice.invoice_number);
+                return;
+            }
+
             // Edit button clicked
             if (e.target.closest('.edit-btn')) {
                 Modals.showEdit(invoice);
@@ -3352,7 +4365,7 @@ const App = {
                 const badge = e.target.closest('.reimbursement-status-badge');
                 const currentStatus = badge.dataset.currentStatus;
 
-                // 显示状态选择弹窗
+                // 鏄剧ず鐘舵€侀€夋嫨寮圭獥
                 ReimbursementStatusManager.showStatusModal(invoiceNumber, currentStatus);
                 return;
             }
@@ -3371,6 +4384,33 @@ const App = {
 
         // Preview PDF button
         DOM.previewPdfBtn.addEventListener('click', () => Modals.previewPdf());
+
+        [DOM.openInvoiceContractsBtn, DOM.openInvoiceContractsPanelBtn].filter(Boolean).forEach((button) => {
+            button.addEventListener('click', () => {
+                if (AppState.currentInvoice) {
+                    this.openContractWorkspace(AppState.currentInvoice.invoice_number);
+                }
+            });
+        });
+
+        DOM.detailRelatedContracts?.addEventListener('click', (event) => {
+            const contractButton = event.target.closest('[data-contract-search]');
+            if (contractButton) {
+                const invoiceNumber = contractButton.dataset.contractSearch || AppState.currentInvoice?.invoice_number || '';
+                if (invoiceNumber) {
+                    this.openContractWorkspace(invoiceNumber);
+                }
+                return;
+            }
+
+            const invoiceButton = event.target.closest('[data-open-invoice]');
+            if (invoiceButton) {
+                const invoiceNumber = invoiceButton.dataset.openInvoice || '';
+                if (invoiceNumber) {
+                    window.location.href = Utils.buildInvoiceWorkspaceUrl(invoiceNumber);
+                }
+            }
+        });
 
         // Edit form submit
         DOM.editForm.addEventListener('submit', async (e) => {
@@ -3575,7 +4615,7 @@ const App = {
         if (AppState.personFilter) {
             const personSelect = document.getElementById('personFilterSelect');
             const personLabel = personSelect?.selectedOptions?.[0]?.textContent?.trim() || AppState.personFilter;
-            filters.push(`报销人员: ${personLabel}`);
+            filters.push(`报销人: ${personLabel}`);
         }
         if (AppState.uploaderFilter) filters.push(`上传人: ${AppState.uploaderFilter}`);
         if (AppState.reimbursementStatusFilter) filters.push(`报销状态: ${AppState.reimbursementStatusFilter}`);
@@ -3588,7 +4628,7 @@ const App = {
         const filters = this.buildActiveFilters();
         if (filters.length === 0) {
             DOM.activeFilterBar.classList.add('d-none');
-            DOM.activeFilterText.textContent = '当前无筛选条件';
+            DOM.activeFilterText.textContent = '当前没有筛选条件';
             return;
         }
         DOM.activeFilterBar.classList.remove('d-none');
@@ -3603,6 +4643,8 @@ const App = {
         AppState.uploaderFilter = '';
         AppState.reimbursementStatusFilter = '';
         AppState.recordTypeFilter = '';
+        AppState.focusInvoice = '';
+        AppState.navigationState.focusInvoiceHandled = false;
         AppState.pagination.page = 1;
 
         if (DOM.searchInput) DOM.searchInput.value = '';
@@ -3645,7 +4687,7 @@ const App = {
         if (DOM.paginationInfo) {
             const startNum = totalCount === 0 ? 0 : (page - 1) * pageSize + 1;
             const endNum = totalCount === 0 ? 0 : Math.min(page * pageSize, totalCount);
-            DOM.paginationInfo.textContent = `显示 ${startNum}-${endNum} 条，共 ${totalCount} 条（第 ${page}/${totalPages} 页）`;
+            DOM.paginationInfo.textContent = `显示 ${startNum}-${endNum} 条，共 ${totalCount} 条，第 ${page}/${totalPages} 页`;
         }
         if (DOM.paginationPrevBtn) DOM.paginationPrevBtn.disabled = page <= 1;
         if (DOM.paginationNextBtn) DOM.paginationNextBtn.disabled = page >= totalPages;
@@ -3706,6 +4748,8 @@ const App = {
             );
             this.updatePagination(data);
             this.updateFilterSummary();
+            this.syncUrlState();
+            await this.openFocusedInvoiceFromState();
         } catch (error) {
             if (error.message !== '需要登录') {
                 Toast.error('加载发票列表失败: ' + error.message);
@@ -3719,6 +4763,51 @@ const App = {
             if (requestId === AppState.requestState.active) {
                 this.setTableLoading(false);
             }
+        }
+    }
+};
+
+const ContractPage = {
+    async init() {
+        Auth.init();
+        UserManagement.init();
+        ContractManager.init();
+
+        const isLoggedIn = await Auth.checkAuth();
+        if (!isLoggedIn) {
+            Auth.showLoginModal();
+        }
+
+        this.bindEvents();
+
+        if (isLoggedIn) {
+            await ContractManager.loadContracts();
+        }
+    },
+
+    bindEvents() {
+        if (DOM.loginForm) {
+            DOM.loginForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const username = DOM.loginUsername.value.trim();
+                const password = DOM.loginPassword.value;
+                await Auth.login(username, password);
+            });
+        }
+
+        if (DOM.logoutBtn) {
+            DOM.logoutBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                Auth.logout();
+            });
+        }
+
+        const userManagementBtn = document.getElementById('userManagementBtn');
+        if (userManagementBtn) {
+            userManagementBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                UserManagement.showModal();
+            });
         }
     }
 };
@@ -3927,7 +5016,7 @@ const SignatureManager = {
                 // Update dimensions display
                 const dimInfo = document.getElementById('pdfDimensionsInfo');
                 if (dimInfo) {
-                    dimInfo.textContent = `${Math.round(this.pdfWidth)} x ${Math.round(this.pdfHeight)} 点`;
+                    dimInfo.textContent = `${Math.round(this.pdfWidth)} x ${Math.round(this.pdfHeight)} px`;
                 }
             }
         } catch (error) {
@@ -4015,7 +5104,7 @@ const SignatureManager = {
         }
 
         const file = fileInput.files[0];
-        const name = prompt('请输入签章名称:', file.name.split('.')[0]);
+        const name = prompt('请输入签章模板名称', file.name.split('.')[0]);
         if (!name) return;
 
         try {
@@ -4051,7 +5140,7 @@ const SignatureManager = {
             return;
         }
 
-        if (!confirm('确定要删除此签章模板吗？')) return;
+        if (!confirm('确认删除该签章模板吗？')) return;
 
         try {
             const result = await API.deleteSignatureTemplate(this.selectedTemplateId);
@@ -4116,7 +5205,7 @@ const SignatureManager = {
 
         const ext = file.name.split('.').pop().toLowerCase();
         if (!['png', 'jpg', 'jpeg'].includes(ext)) {
-            Toast.error('仅支持PNG、JPG格式图片');
+            Toast.error('仅支持 PNG、JPG、JPEG 格式图片');
             e.target.value = '';
             return;
         }
@@ -4174,7 +5263,7 @@ const SignatureManager = {
                     positionX, positionY, width, height, pageNumber
                 );
             } else {
-                Toast.warning('请先选择签章模板或上传签章图片');
+                Toast.warning('请先上传签章文件或选择签章模板');
                 return;
             }
 
@@ -4206,11 +5295,11 @@ const SignatureManager = {
 
     async deleteSignature() {
         if (!this.currentInvoiceNumber || !this.currentSignature) {
-            Toast.warning('没有可删除的签章');
+            Toast.warning('当前没有可删除的签章');
             return;
         }
 
-        if (!confirm('确定要删除此签章吗？')) return;
+        if (!confirm('确认删除该签章吗？')) return;
 
         try {
             const result = await API.deleteSignature(this.currentInvoiceNumber);
@@ -4269,8 +5358,6 @@ const ReimbursementStatusManager = {
             </div>
         `;
         document.body.insertAdjacentHTML('beforeend', modalHtml);
-
-        // Bind click events
         document.querySelectorAll('#reimbursementStatusModal .status-option').forEach(btn => {
             btn.addEventListener('click', async () => {
                 const newStatus = btn.dataset.status;
@@ -4286,7 +5373,6 @@ const ReimbursementStatusManager = {
             this.init();
         }
 
-        // Highlight current status
         document.querySelectorAll('#reimbursementStatusModal .status-option').forEach(btn => {
             const status = btn.dataset.status;
             if (status === currentStatus) {
@@ -4307,14 +5393,12 @@ const ReimbursementStatusManager = {
         try {
             const result = await API.updateReimbursementStatus(this.currentInvoiceNumber, newStatus);
             if (result.success) {
-                Toast.success(`报销状态已更新为"${newStatus}"`);
+                Toast.success(`报销状态已更新为 "${newStatus}"`);
 
-                // 先关闭modal
                 if (this.modalInstance) {
                     this.modalInstance.hide();
                 }
 
-                // 立即更新表格中对应行的状态显示（不等待API刷新）
                 const badge = document.querySelector(
                     `.reimbursement-status-badge[data-invoice-number="${this.currentInvoiceNumber}"]`
                 );
@@ -4329,7 +5413,6 @@ const ReimbursementStatusManager = {
                     }
                 }
 
-                // 更新本地数据
                 const invoiceIndex = AppState.invoices.findIndex(
                     inv => inv.invoice_number === this.currentInvoiceNumber
                 );
@@ -4337,7 +5420,6 @@ const ReimbursementStatusManager = {
                     AppState.invoices[invoiceIndex].reimbursement_status = newStatus;
                 }
 
-                // 更新状态计数
                 await App.loadInvoices();
             } else {
                 Toast.error(result.message || '更新失败');
@@ -4353,6 +5435,13 @@ const ReimbursementStatusManager = {
 // Initialize on DOM Ready
 // ============================================
 document.addEventListener('DOMContentLoaded', () => {
+    if (isContractPage) {
+        ContractPage.init();
+        return;
+    }
+    if (isUscoaPage) {
+        return;
+    }
     App.init();
     SignatureManager.init();
     ReimbursementStatusManager.init();

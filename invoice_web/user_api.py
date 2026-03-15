@@ -350,6 +350,14 @@ def confirm_upload():
         # 检查大额发票是否需要合同
         amount_float = float(invoice.amount)
         has_contract = 'contract_file' in request.files and request.files['contract_file'].filename != ''
+        if has_contract:
+            contract_filename = request.files['contract_file'].filename or ''
+            if not contract_filename.lower().endswith('.pdf'):
+                return jsonify({
+                    'success': False,
+                    'message': '合同仅支持PDF格式',
+                    'requires_contract': True
+                }), 400
         
         if amount_float > LARGE_INVOICE_THRESHOLD and not has_contract:
             return jsonify({
@@ -387,7 +395,12 @@ def confirm_upload():
             contract_file = request.files['contract_file']
             contract_service = get_contract_service()
             contract_data = contract_file.read()
-            contract_service.upload_contract(invoice.invoice_number, contract_data, contract_file.filename)
+            contract_service.upload_contract(
+                invoice.invoice_number,
+                contract_data,
+                contract_file.filename,
+                contract_file.mimetype or 'application/pdf'
+            )
         
         # 获取报销人名称
         person_name = ''

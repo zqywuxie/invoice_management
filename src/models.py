@@ -203,6 +203,9 @@ class Contract:
     file_path: str
     original_filename: str
     upload_time: datetime
+    invoice_numbers_text: str = ""
+    contract_title: str = ""
+    contract_tags_text: str = ""
 
     def __eq__(self, other: object) -> bool:
         """Compare two Contract objects for equality."""
@@ -211,6 +214,9 @@ class Contract:
         return (
             self.id == other.id
             and self.invoice_number == other.invoice_number
+            and self.invoice_numbers_text == other.invoice_numbers_text
+            and self.contract_title == other.contract_title
+            and self.contract_tags_text == other.contract_tags_text
             and self.file_path == other.file_path
             and self.original_filename == other.original_filename
             and self.upload_time == other.upload_time

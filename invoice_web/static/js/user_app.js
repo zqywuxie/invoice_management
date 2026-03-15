@@ -951,14 +951,11 @@ function initEditModal() {
 
 function handleEditContractFile(file) {
     if (!file) return;
-    const allowedTypes = ['application/pdf', 'application/msword',
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        'image/jpeg', 'image/png'];
     const ext = file.name.split('.').pop().toLowerCase();
-    const allowedExts = ['pdf', 'doc', 'docx', 'jpg', 'jpeg', 'png'];
+    const allowedExts = ['pdf'];
 
     if (!allowedExts.includes(ext)) {
-        showMessage('仅支持PDF、DOC、DOCX、JPG、PNG格式文件', 'error');
+        showMessage('合同仅支持PDF格式', 'error');
         return;
     }
     editContractFile = file;

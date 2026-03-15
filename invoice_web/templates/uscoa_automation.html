@@ -1,0 +1,265 @@
+﻿{% extends "base.html" %}
+
+{% block page_id %}admin-uscoa{% endblock %}
+{% block title %}OA 自动申报 - 电子发票汇总系统{% endblock %}
+
+{% block extra_css %}
+<style>
+    .uscoa-page .hero-card {
+        border: 0;
+        background: linear-gradient(135deg, #f8fbff 0%, #eef4ff 100%);
+    }
+
+    .uscoa-page .hero-icon {
+        width: 3.5rem;
+        height: 3.5rem;
+        border-radius: 1.1rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(37, 99, 235, 0.12);
+        color: #2563eb;
+        font-size: 1.5rem;
+    }
+
+    .uscoa-page .stamp-option-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 0.75rem;
+    }
+
+    .uscoa-page .stamp-option {
+        display: flex;
+        align-items: center;
+        gap: 0.65rem;
+        padding: 0.85rem 1rem;
+        border: 1px solid #dbe5f4;
+        border-radius: 0.9rem;
+        background: #fff;
+        transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+    }
+
+    .uscoa-page .stamp-option:hover {
+        border-color: #93c5fd;
+        box-shadow: 0 10px 24px rgba(37, 99, 235, 0.08);
+        transform: translateY(-1px);
+    }
+
+    .uscoa-page .stamp-option input {
+        margin-top: 0;
+        flex-shrink: 0;
+    }
+
+    .uscoa-page .guide-list,
+    .uscoa-page .guide-notes,
+    .uscoa-page .attachment-file-list {
+        list-style: none;
+        padding-left: 0;
+        margin-bottom: 0;
+    }
+
+    .uscoa-page .guide-list li,
+    .uscoa-page .guide-notes li,
+    .uscoa-page .attachment-file-list li {
+        padding: 0.85rem 0;
+        border-bottom: 1px solid #eef2f7;
+    }
+
+    .uscoa-page .guide-list li:last-child,
+    .uscoa-page .guide-notes li:last-child,
+    .uscoa-page .attachment-file-list li:last-child {
+        border-bottom: 0;
+    }
+
+    .uscoa-page .guide-owner {
+        display: inline-flex;
+        align-items: center;
+        padding: 0.15rem 0.55rem;
+        border-radius: 999px;
+        background: #eff6ff;
+        color: #1d4ed8;
+        font-size: 0.82rem;
+        font-weight: 600;
+    }
+
+    .uscoa-page .attachment-box {
+        border: 1px dashed #bfdbfe;
+        border-radius: 1rem;
+        padding: 1rem 1.1rem;
+        background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
+    }
+
+    .uscoa-page .attachment-empty {
+        color: #6b7280;
+        font-size: 0.92rem;
+    }
+
+    .uscoa-page .result-output {
+        min-height: 240px;
+        margin-bottom: 0;
+        padding: 1rem;
+        border-radius: 1rem;
+        background: #0f172a;
+        color: #dbeafe;
+        font-size: 0.82rem;
+        line-height: 1.5;
+        white-space: pre-wrap;
+        word-break: break-word;
+    }
+
+    .uscoa-page .result-meta-item {
+        padding: 0.65rem 0;
+        border-bottom: 1px dashed #dbe5f4;
+    }
+
+    .uscoa-page .result-meta-item:last-child {
+        border-bottom: 0;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="uscoa-page">
+    <section class="card shadow-sm hero-card mb-4">
+        <div class="card-body p-4 p-xl-5">
+            <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
+                <div class="d-flex align-items-start gap-3">
+                    <div class="hero-icon">
+                        <i class="bi bi-building-check"></i>
+                    </div>
+                    <div>
+                        <div class="text-primary fw-semibold small mb-2">OA 自动申报</div>
+                        <h2 class="h3 mb-2">科研事项用印自动填报</h2>
+                        <p class="text-muted mb-0">
+                            页面会调用工作区内的 Playwright 自动化脚本，自动完成登录、进入
+                            <code>业务审批 -> 用印事项 -> 科研事项用印</code>，并根据表单内容执行自动填报。
+                            如果上传附件，系统会先保存草稿，再进入 OA 附件页面继续上传文件。
+                        </p>
+                    </div>
+                </div>
+                <div class="d-flex flex-wrap gap-2">
+                    <a class="btn btn-primary" href="{{ url_for('admin_uscoa_simple') }}">
+                        <i class="bi bi-diagram-3 me-1"></i>简化可视化操作页
+                    </a>
+                    <a class="btn btn-outline-primary" href="{{ url_for('admin') }}">
+                        <i class="bi bi-receipt me-1"></i>返回发票管理
+                    </a>
+                    <a class="btn btn-outline-secondary" href="{{ url_for('admin_contracts') }}">
+                        <i class="bi bi-file-earmark-lock2 me-1"></i>合同管理
+                    </a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <div class="row g-4">
+        <div class="col-xl-4">
+            <div class="card shadow-sm h-100">
+                <div class="card-header bg-white">
+                    <div class="d-flex justify-content-between align-items-center gap-2">
+                        <h5 class="mb-0"><i class="bi bi-journal-text me-2 text-primary"></i>须知信息</h5>
+                        <span class="badge text-bg-light" id="guideBadge">待加载</span>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-info mb-0" id="guideStatus">正在读取 OA 页面元数据...</div>
+                    <div class="d-none" id="guidePanel">
+                        <h6 class="mb-1" id="guideTitle">温馨提示</h6>
+                        <p class="text-muted small mb-3" id="guideSectionTitle">科研部相关业务负责人信息如下</p>
+                        <div class="small text-uppercase text-muted fw-semibold mb-2">业务负责人</div>
+                        <ul class="guide-list" id="guideResponsibleList"></ul>
+                        <div class="small text-uppercase text-muted fw-semibold mt-4 mb-2">须知</div>
+                        <ul class="guide-notes" id="guideNoteList"></ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-8">
+            <div class="card shadow-sm">
+                <div class="card-header bg-white">
+                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+                        <div>
+                            <h5 class="mb-1"><i class="bi bi-pencil-square me-2 text-primary"></i>填报参数</h5>
+                            <div class="text-muted small">默认执行“自动填报并保存草稿”。若上传附件，系统会自动先保存再进入附件页。</div>
+                        </div>
+                        <span class="badge text-bg-warning">默认动作：保存草稿</span>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-danger d-none" id="formErrorBox"></div>
+                    <form id="uscoaAutofillForm" novalidate>
+                        <div class="row g-3">
+                            <div class="col-12">
+                                <label for="uscoaSubject" class="form-label">申办内容</label>
+                                <input type="text" class="form-control" id="uscoaSubject" maxlength="120" required
+                                    placeholder="例如：科研项目合同盖章申请">
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label d-flex justify-content-between align-items-center">
+                                    <span>用印类型</span>
+                                    <small class="text-muted">可多选</small>
+                                </label>
+                                <div class="stamp-option-grid" id="stampOptionsContainer"></div>
+                            </div>
+                            <div class="col-md-4">
+                                <label for="uscoaContractAmount" class="form-label">合同金额</label>
+                                <input type="number" class="form-control" id="uscoaContractAmount" min="0" step="0.01"
+                                    placeholder="例如：10000.00">
+                            </div>
+                            <div class="col-md-8">
+                                <label for="uscoaPhone" class="form-label">联系电话</label>
+                                <input type="text" class="form-control" id="uscoaPhone" maxlength="32" required
+                                    placeholder="请输入经办人联系电话">
+                            </div>
+                            <div class="col-12">
+                                <label for="uscoaDescription" class="form-label">事项说明</label>
+                                <textarea class="form-control" id="uscoaDescription" rows="5" required
+                                    placeholder="请简要说明用印用途、涉及项目、金额来源等信息"></textarea>
+                            </div>
+                            <div class="col-12">
+                                <label for="uscoaRemark" class="form-label">备注</label>
+                                <input type="text" class="form-control" id="uscoaRemark" maxlength="200"
+                                    placeholder="可选；如无可留空">
+                            </div>
+                            <div class="col-12">
+                                <label for="uscoaAttachments" class="form-label">附件</label>
+                                <div class="attachment-box">
+                                    <input type="file" class="form-control" id="uscoaAttachments" multiple>
+                                    <div class="form-text mt-2" id="attachmentHint">支持一次选择多个文件。若上传附件，OA 会先自动保存草稿，再进入附件页面执行上传。</div>
+                                    <ul class="attachment-file-list mt-3 d-none" id="attachmentFileList"></ul>
+                                    <div class="attachment-empty mt-3" id="attachmentEmptyState">当前未选择附件。</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="d-flex flex-wrap justify-content-end gap-2 mt-4">
+                            <button type="button" class="btn btn-outline-secondary" id="fillOnlyBtn">
+                                <i class="bi bi-input-cursor-text me-1"></i>仅填充不保存
+                            </button>
+                            <button type="submit" class="btn btn-primary" id="saveDraftBtn">
+                                <i class="bi bi-lightning-charge me-1"></i>自动填报并保存草稿
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <div class="card shadow-sm mt-4">
+                <div class="card-header bg-white d-flex flex-wrap justify-content-between align-items-center gap-2">
+                    <h5 class="mb-0"><i class="bi bi-terminal me-2 text-primary"></i>执行结果</h5>
+                    <span class="badge text-bg-secondary" id="resultBadge">未执行</span>
+                </div>
+                <div class="card-body">
+                    <div class="text-muted mb-3" id="resultMessage">提交后将在这里显示自动化结果。</div>
+                    <div id="resultMeta"></div>
+                    <pre class="result-output mt-3">暂无结果</pre>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/uscoa_automation.js') }}"></script>
+{% endblock %}
